@@ -9,6 +9,7 @@ export type GameRow = {
   usato?: number | null;
   buyback?: number | null;
   priced: boolean;
+  is_game: boolean;
 };
 
 export type ProductPrices = {

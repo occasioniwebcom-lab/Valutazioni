@@ -33,6 +33,10 @@ VideogamesItalia logo, shareable online or printable. Single-user, Italian.
 - Vertical (full) cover thumbnails so the console banner on the box art is visible.
 - Editable "valutazione" per item in the Preventivo (decimal-pad, live total recompute,
   keyboard-aware). Access-code/PIN was requested then dropped (personal single-user use).
+- "Solo giochi" filter (chip row) hiding accessories (amiibo/custodie/funko/gadget/playset/
+  film…) via a title-based `is_game` classifier on the backend; default ON.
+- Search hardened: grid wait 12s + one retry to reduce transient empty results (the 502 the
+  user saw was transient uvicorn --reload during edits).
 
 ## Known constraints
 - Game covers are hotlinked from gamelife.it (Cloudflare) — blank when loaded from this

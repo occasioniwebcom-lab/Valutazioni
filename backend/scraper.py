@@ -89,6 +89,26 @@ def _thumb(url: Optional[str]) -> Optional[str]:
     return re.sub(r"image_\d+", "image_256", url)
 
 
+ACCESSORY_RE = re.compile(
+    r"\b(amiibo|funko|pop!?|peluche|plush|custodia|cover|cavo|caricabatteri\w*|adattatore|"
+    r"controller|joy-?con|volante|borsa|zaino\w*|cuffi\w*|headset|auricolari|steelbook|"
+    r"gadget|magliet\w*|t-shirt|tazza|mug|poster|statuin\w*|statua|figure|figures|spill\w*|"
+    r"felpa|cappell\w*|tappetino|mousepad|dock|supporto|stand|batteria|memory card|"
+    r"protezione|pellicola|grip|skin|lampada|lamp|portafogli\w*|wallet|sciarpa|calzini|"
+    r"carte da gioco|playing cards|sticker|adesiv\w*|termos|borraccia|orologio|sveglia|"
+    r"puzzle|lego|portachiav\w*|bundle accessori|playset|interattiv\w*|il film|blu-?ray|"
+    r"dvd|4k ultra|steelbook)\b",
+    re.I,
+)
+
+
+def _is_game(title: str) -> bool:
+    """Heuristic: a result is a video game unless the title looks like an accessory/gadget."""
+    if not title:
+        return True
+    return ACCESSORY_RE.search(title) is None
+
+
 def _parse_grid(html: str):
     soup = BeautifulSoup(html, "lxml")
     items = []
@@ -110,7 +130,7 @@ def _parse_grid(html: str):
         image = _thumb(img.get("src") if img else None)
         pid_input = card.select_one("input[name='product_id']")
         pid = pid_input.get("value") if pid_input else None
-        items.append({"title": title, "url": url, "image": image, "product_id": pid})
+        items.append({"title": title, "url": url, "image": image, "product_id": pid, "is_game": _is_game(title)})
     return items
 
 
@@ -154,19 +174,26 @@ def _parse_product(html: str):
 
 async def search_games(query: str, limit: int = 20):
     browser = await _get_browser()
-    ctx = await browser.new_context(locale="it-IT", timezone_id="Europe/Rome", user_agent=UA)
-    try:
-        page = await ctx.new_page()
-        q = re.sub(r"\s+", "+", query.strip())
-        await page.goto(f"{BASE}/shop?search={q}", wait_until="domcontentloaded", timeout=45000)
+    q = re.sub(r"\s+", "+", query.strip())
+    url = f"{BASE}/shop?search={q}"
+    items = []
+    for attempt in range(2):
+        ctx = await browser.new_context(locale="it-IT", timezone_id="Europe/Rome", user_agent=UA)
         try:
-            await page.wait_for_selector(".oe_product", timeout=8000)
-        except Exception:  # noqa: BLE001
-            pass
-        html = await page.content()
-    finally:
-        await ctx.close()
-    return _parse_grid(html)[:limit]
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            try:
+                await page.wait_for_selector(".oe_product", timeout=12000)
+            except Exception:  # noqa: BLE001
+                pass
+            html = await page.content()
+        finally:
+            await ctx.close()
+        items = _parse_grid(html)[:limit]
+        if items:
+            return items
+        await asyncio.sleep(0.5)
+    return items
 
 
 async def fetch_product(url: str, attempts: int = 3):

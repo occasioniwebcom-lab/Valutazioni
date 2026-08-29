@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Keyboard,
@@ -30,7 +30,13 @@ export default function CercaScreen() {
   const [state, setState] = useState<SearchState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [prices, setPrices] = useState<Record<string, PriceState>>({});
+  const [onlyGames, setOnlyGames] = useState(true);
   const tokenRef = useRef(0);
+
+  const filtered = useMemo(
+    () => (onlyGames ? results.filter((r) => r.is_game) : results),
+    [onlyGames, results],
+  );
 
   const setPrice = useCallback((url: string, p: PriceState) => {
     setPrices((prev) => ({ ...prev, [url]: p }));
@@ -158,6 +164,26 @@ export default function CercaScreen() {
             <Feather name="arrow-right" size={18} color={colors.onBrandPrimary} />
           </Pressable>
         </View>
+
+        {state === "done" && results.length > 0 && (
+          <View style={styles.chipsRow}>
+            <Pressable
+              testID="chip-solo-giochi"
+              onPress={() => setOnlyGames(true)}
+              style={[styles.chip, onlyGames && styles.chipActive]}
+            >
+              <Feather name="disc" size={13} color={onlyGames ? colors.onBrandPrimary : colors.onSurfaceTertiary} />
+              <Text style={[styles.chipText, onlyGames && styles.chipTextActive]}>Solo giochi</Text>
+            </Pressable>
+            <Pressable
+              testID="chip-tutti"
+              onPress={() => setOnlyGames(false)}
+              style={[styles.chip, !onlyGames && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, !onlyGames && styles.chipTextActive]}>Tutti</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {state === "loading" && (
@@ -197,17 +223,31 @@ export default function CercaScreen() {
         </View>
       )}
 
-      {state === "done" && results.length > 0 && (
+      {state === "done" && results.length > 0 && filtered.length === 0 && (
+        <View style={styles.center} testID="only-accessories-state">
+          <Feather name="package" size={36} color={colors.muted} />
+          <Text style={styles.centerTitle}>Solo accessori trovati</Text>
+          <Text style={styles.centerText}>Nessun videogioco tra i risultati.</Text>
+          <Pressable style={styles.primaryBtn} onPress={() => setOnlyGames(false)} testID="show-all-button">
+            <Text style={styles.primaryBtnText}>Mostra tutti i risultati</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {state === "done" && filtered.length > 0 && (
         <FlatList
           testID="results-list"
-          data={results}
+          data={filtered}
           keyExtractor={(item) => item.url}
           renderItem={renderItem}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           contentContainerStyle={{ paddingBottom: spacing.xl }}
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
-            <Text style={styles.count}>{results.length} risultati</Text>
+            <Text style={styles.count}>
+              {filtered.length} {filtered.length === 1 ? "risultato" : "risultati"}
+              {onlyGames ? " · solo giochi" : ""}
+            </Text>
           }
         />
       )}
@@ -253,6 +293,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  chipsRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 36,
+    flexShrink: 0,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary,
+  },
+  chipActive: { backgroundColor: colors.brandPrimary },
+  chipText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.onSurfaceTertiary },
+  chipTextActive: { color: colors.onBrandPrimary },
   count: {
     fontFamily: font.medium,
     fontSize: fontSize.sm,

@@ -59,6 +59,7 @@ class GameRow(BaseModel):
     usato: Optional[float] = None
     buyback: Optional[float] = None
     priced: bool = False  # True once prices have been fetched
+    is_game: bool = True  # False for accessories (amiibo, custodie, gadget…)
 
 
 class SearchResponse(BaseModel):
@@ -121,7 +122,8 @@ async def search(q: str = Query(..., min_length=1)):
 
     results: List[GameRow] = []
     for it in items:
-        row = GameRow(url=it["url"], title=it["title"] or "Senza titolo", image=it.get("image"))
+        row = GameRow(url=it["url"], title=it["title"] or "Senza titolo", image=it.get("image"),
+                      is_game=it.get("is_game", True))
         cached = await db.games.find_one({"url": it["url"]})
         if cached and cached.get("priced"):
             row.nuovo = cached.get("nuovo")
