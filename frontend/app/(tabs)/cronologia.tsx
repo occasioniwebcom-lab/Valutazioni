@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase", letterSpacing: 0.4,
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.surfaceSecondary },
-  cover: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
+  cover: { width: 48, height: 64, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
   mid: { flex: 1, gap: spacing.sm },
   title: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, lineHeight: 18 },
   buybackPill: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: 4 },

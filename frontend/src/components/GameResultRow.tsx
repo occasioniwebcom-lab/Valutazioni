@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   },
   cover: {
     width: 48,
-    height: 48,
+    height: 64,
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceTertiary,
   },

@@ -30,6 +30,9 @@ VideogamesItalia logo, shareable online or printable. Single-user, Italian.
 - Search/valuation history grouped by date; clear history (soft delete).
 - Preventivo: add/remove games, customer name, total valutazione, share/print PDF with
   the VideogamesItalia logo + small covers.
+- Vertical (full) cover thumbnails so the console banner on the box art is visible.
+- Editable "valutazione" per item in the Preventivo (decimal-pad, live total recompute,
+  keyboard-aware). Access-code/PIN was requested then dropped (personal single-user use).
 
 ## Known constraints
 - Game covers are hotlinked from gamelife.it (Cloudflare) — blank when loaded from this

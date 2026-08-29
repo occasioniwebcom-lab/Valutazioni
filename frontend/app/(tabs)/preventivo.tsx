@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -76,9 +77,56 @@ function buildHtml(items: PreventivoItem[], total: number, id: string, customer:
   </body></html>`;
 }
 
+function PreventivoItemRow({ item }: { item: PreventivoItem }) {
+  const { remove, setBuyback } = usePreventivo();
+  const [text, setText] = useState(item.buyback != null ? formatEuroPlain(item.buyback) : "");
+
+  const onChange = (t: string) => {
+    const clean = t.replace(/[^0-9.,]/g, "");
+    setText(clean);
+    const parsed = clean === "" ? null : parseFloat(clean.replace(",", "."));
+    setBuyback(item.url, parsed != null && !Number.isNaN(parsed) ? parsed : null);
+  };
+  const onBlur = () => {
+    if (text.trim() === "") return;
+    const parsed = parseFloat(text.replace(",", "."));
+    if (!Number.isNaN(parsed)) setText(formatEuroPlain(parsed));
+  };
+
+  return (
+    <View style={styles.row} testID="preventivo-row">
+      <Image source={item.image ? { uri: item.image } : undefined} style={styles.cover} contentFit="cover" transition={150} />
+      <View style={styles.mid}>
+        <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+        <View style={styles.valEditWrap}>
+          <Feather name="edit-2" size={11} color={colors.muted} />
+          <Text style={styles.valLabel}>Valutazione modificabile</Text>
+        </View>
+      </View>
+      <View style={styles.valInputBox}>
+        <Text style={styles.euro}>€</Text>
+        <TextInput
+          testID="valutazione-input"
+          style={styles.valInput}
+          value={text}
+          onChangeText={onChange}
+          onBlur={onBlur}
+          keyboardType="decimal-pad"
+          placeholder="0,00"
+          placeholderTextColor={colors.muted}
+          maxLength={9}
+        />
+      </View>
+      <Pressable testID="remove-item" onPress={() => { Haptics.selectionAsync().catch(() => {}); remove(item.url); }} hitSlop={8} style={styles.removeBtn}>
+        <Feather name="x" size={18} color={colors.muted} />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function PreventivoScreen() {
   const insets = useSafeAreaInsets();
-  const { items, remove, clear, total } = usePreventivo();
+  const { items, clear, total } = usePreventivo();
   const [customer, setCustomer] = useState("");
   const [generating, setGenerating] = useState(false);
   const id = useMemo(() => quoteId(), []);
@@ -126,7 +174,11 @@ export default function PreventivoScreen() {
           <Text style={styles.centerText}>Aggiungi giochi dalla ricerca per{"\n"}creare un preventivo per il cliente.</Text>
         </View>
       ) : (
-        <>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={insets.top}
+        >
           <ScrollView contentContainerStyle={{ paddingBottom: spacing.md }} keyboardShouldPersistTaps="handled">
             <View style={styles.customerBox}>
               <Text style={styles.customerLabel}>Cliente (opzionale)</Text>
@@ -141,17 +193,7 @@ export default function PreventivoScreen() {
             </View>
 
             {items.map((item) => (
-              <View key={item.url} style={styles.row} testID="preventivo-row">
-                <Image source={item.image ? { uri: item.image } : undefined} style={styles.cover} contentFit="cover" transition={150} />
-                <View style={styles.mid}>
-                  <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                  <Text style={styles.valLabel}>Valutazione</Text>
-                </View>
-                <Text style={styles.val}>{formatEuro(item.buyback)}</Text>
-                <Pressable testID="remove-item" onPress={() => { Haptics.selectionAsync().catch(() => {}); remove(item.url); }} hitSlop={8} style={styles.removeBtn}>
-                  <Feather name="x" size={18} color={colors.muted} />
-                </Pressable>
-              </View>
+              <PreventivoItemRow key={item.url} item={item} />
             ))}
           </ScrollView>
 
@@ -171,7 +213,7 @@ export default function PreventivoScreen() {
               )}
             </Pressable>
           </View>
-        </>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -196,10 +238,20 @@ const styles = StyleSheet.create({
     fontFamily: font.regular, fontSize: fontSize.lg, color: colors.onSurface,
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomColor: colors.divider, borderBottomWidth: 1 },
-  cover: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
+  cover: { width: 44, height: 58, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
   mid: { flex: 1 },
   title: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, lineHeight: 18 },
-  valLabel: { fontFamily: font.regular, fontSize: 10, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.3, marginTop: 3 },
+  valLabel: { fontFamily: font.regular, fontSize: 10, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.3 },
+  valEditWrap: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  valInputBox: {
+    flexDirection: "row", alignItems: "center", gap: 2,
+    borderBottomWidth: 1.5, borderBottomColor: colors.brandSecondary, paddingBottom: 2, minWidth: 72,
+  },
+  euro: { fontFamily: font.monoSemibold, fontSize: fontSize.base, color: colors.brandPrimary },
+  valInput: {
+    fontFamily: font.monoSemibold, fontSize: fontSize.lg, color: colors.brandPrimary,
+    paddingVertical: 0, minWidth: 52, textAlign: "right",
+  },
   val: { fontFamily: font.monoSemibold, fontSize: fontSize.lg, color: colors.brandPrimary },
   removeBtn: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
   footer: {
