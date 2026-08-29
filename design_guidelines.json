@@ -1,0 +1,142 @@
+{
+  "app_name": "GameLife Valutazioni",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A fast, clean, and trustworthy utility emphasizing clear typography and immediate data retrieval for high-speed POS evaluation.",
+  "color": {
+    "surface": "#FCFDFC",
+    "onSurface": "#181C1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#181C1A",
+    "surfaceTertiary": "#F1F4F2",
+    "onSurfaceTertiary": "#3E4C45",
+    "surfaceInverse": "#181C1A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#2A5A43",
+    "brandPrimary": "#1F4734",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C9E2D4",
+    "onBrandSecondary": "#1F4734",
+    "brandTertiary": "#E3EFE8",
+    "onBrandTertiary": "#1A3B2B",
+    "success": "#2A5A43",
+    "onSuccess": "#FFFFFF",
+    "warning": "#B87503",
+    "onWarning": "#FFFFFF",
+    "error": "#9E2A2B",
+    "onError": "#FFFFFF",
+    "info": "#4A5D54",
+    "onInfo": "#FFFFFF",
+    "border": "#E6EBE8",
+    "borderStrong": "#B0C4B9",
+    "divider": "#E6EBE8"
+  },
+  "typography": {
+    "displayFontFamily": "Geist",
+    "textFontFamily": "Geist Mono",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS-native padding for outer containers, but tight grouped spacing (sm/xs) for tabular price data so it can be scanned quickly.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use glassmorphism for the sticky bottom tab bar",
+      "Use glassmorphism for the sticky search header when scrolling through heavy result lists",
+      "Use glassmorphism on the sticky 'Condividi PDF' CTA container at the bottom of the Preventivo screen"
+    ],
+    "dont's": [
+      "Never use glassmorphism on individual list rows or the price pills",
+      "Do not blur the form inputs"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Cerca (Search)",
+      "purpose": "A high-speed lookup screen to type a game title and instantly see its valuation prices.",
+      "states": {
+        "loading": "Skeleton rows replicating the exact height and layout of a populated list item (cover box, title bar, three price pill bars).",
+        "empty": "Clean empty state illustration with 'Nessun risultato. Cerca un altro titolo.' message and clear search input.",
+        "error": "Readable text indicating a network issue with a 'Riprova' button."
+      },
+      "layout": "Sticky large search input at the top (surfaceTertiary background). Flat list below. Each row uses a miniature table format: left-aligned square cover (48x48, radius sm), right side stacked with title and a 3-column price layout. Column 1 (Nuovo), Column 2 (Usato), Column 3 (Buyback). The Buyback price must visually dominate (wrapped in a brandTertiary pill with bold brandPrimary text). Include an icon button (e.g., plus) aligned right to add the item to Preventivo."
+    },
+    {
+      "name": "Cronologia (History)",
+      "purpose": "View recent searches grouped by date to quickly re-evaluate games.",
+      "states": {
+        "loading": "Standard spinner or list skeletons.",
+        "empty": "Minimal icon indicating no history yet.",
+        "error": "Error message with retry action."
+      },
+      "layout": "SectionList grouped by relative date ('Oggi', 'Ieri'). List rows are simplified versions of the search results, just cover, title, and the Buyback price."
+    },
+    {
+      "name": "Preventivo (Quote)",
+      "purpose": "Review added games and generate a shareable PDF quote for the customer.",
+      "states": {
+        "loading": "Spinner while generating PDF.",
+        "empty": "Illustration showing an empty list with 'Nessun gioco aggiunto al preventivo.'",
+        "error": "Error generating document, with retry button."
+      },
+      "layout": "Header featuring the shop logo placeholder (VI initials in a circle) and a generated Quote ID. A clean list of the selected games displaying title and Buyback value. At the bottom, outside the scroll view, a sticky total summary (Totale Valutazione) sitting above a full-width primary CTA 'Condividi PDF'."
+    }
+  ],
+  "images": {
+    "game_cover_thumbnail": {
+      "url": "https://images.unsplash.com/photo-1745223676002-b881b2a19089?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHx2aWRlbyUyMGdhbWUlMjBjb3ZlciUyMHRodW1ibmFpbHxlbnwwfHx8fDE3ODc5ODMzMzB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Sample video game cover"
+    },
+    "shop_logo_fallback": {
+      "url": "",
+      "alt": "VideogamesItalia Logo (Use 'VI' initials in a brand Primary circle as fallback since no real PNG was found via selector)"
+    },
+    "empty_search_state": {
+      "url": "https://images.unsplash.com/photo-1667021836621-ef302544b61f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxlbXB0eSUyMHNlYXJjaCUyMHN0YXRlJTIwbWluaW1hbHxlbnwwfHx8fDE3ODc5ODMzMzF8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty search state illustration"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the 1 iOS-Native Clean personality. This is a fast utility app, so avoid excessive decorative elements; prioritize data readability.",
+    "Typography: Use 'Geist' for all text, headings, and labels. Use 'Geist Mono' STRICTLY for all numerical prices to ensure tabular alignment and prevent layout shifting during price rendering.",
+    "Colors: Emphasize the 'Buyback' (valutazione) value by placing it inside a `brandTertiary` background pill with `brandPrimary` text. The Nuovo and Usato prices should just be standard `onSurface` or `onSurfaceSecondary` text without pills so Buyback stands out heavily.",
+    "Search Layout: Use the miniature table format discovered in research. The list row must not be too tall. Use a 48x48 square cover on the left. Stack the title and the 3-column prices (Nuovo, Usato, Buyback) neatly.",
+    "Preventivo Layout: Implement a sticky CTA at the bottom for the 'Condividi PDF' button. The content should scroll behind it using a glassmorphic container (or solid surface with top-shadow if glass fails).",
+    "Always wrap text over images with the strict gradient scrim pattern (transparent to 70%+ surfaceInverse) if covers are used as headers, though here they are mostly thumbnails.",
+    "Ensure 'VideogamesItalia' logo uses a 'VI' initials avatar in a circle as a fallback, as the image selector did not find a valid real-world PNG."
+  ]
+}
