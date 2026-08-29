@@ -1,7 +1,11 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+from jose import jwt, JWTError
 import os
 import asyncio
 import logging
@@ -19,6 +23,13 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# ---------- Auth config (single shared password) ----------
+SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-only-secret-change-me-please-32chars-minimum')
+APP_PASSWORD = os.environ.get('APP_PASSWORD', 'valutazioni2026')
+JWT_MINUTES = int(os.environ.get('JWT_MINUTES', str(60 * 24 * 7)))  # 7 days
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+bearer = HTTPBearer(auto_error=False)
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,6 +53,20 @@ async def lifespan(app: FastAPI):
         await db.searches.create_index("query")
     except Exception as e:  # noqa: BLE001
         logger.warning("index creation: %s", e)
+    # Seed the shared password on first start (idempotent: never overwrites a changed one).
+    try:
+        existing = await db.auth_config.find_one({"_id": "singleton"})
+        if existing is None:
+            pw_hash = await run_in_threadpool(pwd_context.hash, APP_PASSWORD)
+            await db.auth_config.update_one(
+                {"_id": "singleton"},
+                {"$setOnInsert": {"password_hash": pw_hash, "password_version": 1,
+                                  "created_at": now()}},
+                upsert=True,
+            )
+            logger.info("Seeded initial app password")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("password seed: %s", e)
     yield
     await scraper.stop_browser()
     client.close()
@@ -108,13 +133,69 @@ async def _cached_game(url: str):
 
 
 # ---------- Routes ----------
+# ---------- Auth ----------
+class LoginBody(BaseModel):
+    password: str
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def create_token(password_version: int) -> str:
+    n = now()
+    claims = {"sub": "owner", "pv": password_version, "iat": n,
+              "exp": n + timedelta(minutes=JWT_MINUTES)}
+    return jwt.encode(claims, SECRET_KEY, algorithm="HS256")
+
+
+async def require_auth(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
+    if creds is None or creds.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Accesso richiesto")
+    try:
+        claims = jwt.decode(creds.credentials, SECRET_KEY, algorithms=["HS256"])
+        if claims.get("sub") != "owner" or not isinstance(claims.get("pv"), int):
+            raise JWTError()
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
+    cfg = await db.auth_config.find_one({"_id": "singleton"})
+    if not cfg or claims["pv"] != cfg.get("password_version"):
+        raise HTTPException(status_code=401, detail="Sessione revocata")
+    return cfg
+
+
+@api_router.post("/login")
+async def login(body: LoginBody):
+    cfg = await db.auth_config.find_one({"_id": "singleton"})
+    ok = bool(cfg) and await run_in_threadpool(pwd_context.verify, body.password, cfg["password_hash"])
+    if not ok:
+        raise HTTPException(status_code=401, detail="Password errata")
+    return {"access_token": create_token(cfg["password_version"]), "token_type": "bearer"}
+
+
+@api_router.post("/change-password")
+async def change_password(body: ChangePasswordBody, cfg=Depends(require_auth)):
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="La nuova password deve avere almeno 4 caratteri")
+    ok = await run_in_threadpool(pwd_context.verify, body.current_password, cfg["password_hash"])
+    if not ok:
+        raise HTTPException(status_code=403, detail="Password attuale errata")
+    new_hash = await run_in_threadpool(pwd_context.hash, body.new_password)
+    await db.auth_config.update_one(
+        {"_id": "singleton"},
+        {"$set": {"password_hash": new_hash, "updated_at": now()}, "$inc": {"password_version": 1}},
+    )
+    return {"ok": True}
+
+
 @api_router.get("/")
 async def root():
     return {"message": "GameLife Valutazioni API"}
 
 
 @api_router.get("/search", response_model=SearchResponse)
-async def search(q: str = Query(..., min_length=1)):
+async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
     query = q.strip()
     try:
         items = await scraper.search_games(query, limit=20)
@@ -143,7 +224,7 @@ async def search(q: str = Query(..., min_length=1)):
 
 
 @api_router.get("/product", response_model=ProductResponse)
-async def product(url: str = Query(...), title: Optional[str] = None, image: Optional[str] = None):
+async def product(url: str = Query(...), title: Optional[str] = None, image: Optional[str] = None, _cfg=Depends(require_auth)):
     if not url.startswith(scraper.BASE):
         raise HTTPException(status_code=400, detail="URL non valido")
 
@@ -199,7 +280,7 @@ async def product(url: str = Query(...), title: Optional[str] = None, image: Opt
 
 
 @api_router.get("/history", response_model=List[HistoryItem])
-async def history(limit: int = 60):
+async def history(limit: int = 60, _cfg=Depends(require_auth)):
     cursor = db.games.find(
         {"priced": True, "deleted_at": {"$exists": False}}
     ).sort("viewed_at", -1).limit(limit)
@@ -214,7 +295,7 @@ async def history(limit: int = 60):
 
 
 @api_router.delete("/history")
-async def clear_history():
+async def clear_history(_cfg=Depends(require_auth)):
     res = await db.games.update_many(
         {"deleted_at": {"$exists": False}}, {"$set": {"deleted_at": now()}}
     )
@@ -230,3 +311,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Serve the built web UI (only present in the VPS/Docker image, not in preview).
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+_web_dir = ROOT_DIR / "webdist"
+if _web_dir.exists():
+    app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")

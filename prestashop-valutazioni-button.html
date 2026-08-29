@@ -1,0 +1,57 @@
+<!--
+  =====================================================================
+  PULSANTE DORATO "VALUTAZIONI" per il menù di PrestaShop
+  =====================================================================
+  Apre lo strumento di valutazione (ospitato sul tuo VPS) in una nuova scheda.
+
+  ▶ COSA MODIFICARE:
+    Sostituisci  https://valutazioni.tuosito.it  con l'indirizzo del tuo VPS
+    (es. https://valutazioni.videogamesitalia.it  oppure  http://IP_DEL_VPS:8001).
+
+  ▶ DOVE INCOLLARLO IN PRESTASHOP (una di queste vie):
+    1) Menù principale (modulo "Menu personalizzato / Main menu - ps_mainmenu"):
+       aggiungi una voce "Link personalizzato" con URL = l'indirizzo del tuo VPS
+       e apertura in nuova scheda. (Non serve il codice qui sotto: basta il link.)
+    2) In una pagina CMS o in un blocco HTML libero (modulo "Blocco HTML/CMS"):
+       incolla direttamente il codice qui sotto.
+    3) Nel template del tema (header.tpl): incolla il codice dove vuoi che appaia.
+
+  Il pulsante è responsive e non richiede immagini.
+  =====================================================================
+-->
+
+<a class="vgi-valutazioni-btn"
+   href="https://valutazioni.tuosito.it"
+   target="_blank" rel="noopener">
+  <span class="vgi-ico">★</span> Valutazioni
+</a>
+
+<style>
+.vgi-valutazioni-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 18px;
+  border-radius:999px;
+  font-weight:700;
+  font-size:15px;
+  letter-spacing:.3px;
+  text-decoration:none;
+  color:#1a1204;                 /* testo scuro su oro */
+  background:linear-gradient(180deg,#F6D879 0%,#D4AF37 55%,#B8860B 100%);
+  border:1px solid #A9801A;
+  box-shadow:0 2px 6px rgba(120,90,10,.35), inset 0 1px 0 rgba(255,255,255,.5);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  cursor:pointer;
+  line-height:1;
+}
+.vgi-valutazioni-btn:hover{
+  filter:brightness(1.05);
+  transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(120,90,10,.45), inset 0 1px 0 rgba(255,255,255,.6);
+  color:#1a1204;
+  text-decoration:none;
+}
+.vgi-valutazioni-btn:active{ transform:translateY(0); }
+.vgi-valutazioni-btn .vgi-ico{ font-size:15px; line-height:1; }
+</style>

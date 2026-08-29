@@ -1,0 +1,41 @@
+{
+  "summary": "New shared-password auth verified end-to-end. Backend: 10/10 pytest tests pass on /app/backend/tests/test_auth.py — POST /api/login returns 200 with JWT for 'valutazioni2026' and 401 for wrong password; all data endpoints (GET /api/search, /api/product, /api/history, DELETE /api/history) require Bearer token (401 without, 200 with); POST /api/change-password bumps password_version so pre-change tokens receive 401 (revocation), login with old password then returns 401 and login with new one returns 200; wrong current password → 403, new password <4 chars → 400. Preview password was successfully restored to 'valutazioni2026' at the end of the change-password cycle (final login check 200). Frontend (Expo web preview, 390x844): cold load shows login-screen (testID present); wrong password renders login-error 'Password errata'; correct password reveals main app (search-input visible); search 'zelda' → results-list with 'Solo giochi'/'Tutti' chips working; add-to-quote-button (7 available after prices load) adds to Preventivo (badge shows 1, VALUTAZIONE € 20,00 on Zelda ToTK); gear icon (open-settings) opens impostazioni-screen with current-password/new-password/confirm-password/save-password/logout-button all present; tapping logout-button returns to login-screen; token persists across page reload (AsyncStorage restore works). Console warnings about deprecated 'shadow*' style props, 'props.pointerEvents', and 'useNativeDriver' missing on web are unchanged from iteration_2 (non-blocking).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Same non-blocking console warnings as iteration_2: shadow*/pointerEvents deprecation and useNativeDriver missing on web."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_gamelife_api.py",
+    "/app/backend/tests/test_search_bugfix.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None — auth feature works as specified. If parallel pytest-xdist is desired for the full suite, note that TestChangePassword mutates global state (password_version) so it can invalidate other suites' tokens; run test_auth.py serially (as we do: '-o addopts=\"\"'), or gate it with a marker."
+  ],
+  "critical_code_review_comments": [
+    "server.py require_auth correctly cross-checks JWT 'pv' claim against db.auth_config.password_version — clean revocation on password change (line 162-164).",
+    "server.py change-password uses $inc on password_version and $set on password_hash atomically (line 185-188) — good.",
+    "server.py seeds the password singleton only when missing (line 58-66) — idempotent, won't clobber a changed password on restart.",
+    "api.ts req() calls onUnauthorized() on any 401 and throws a translated message — pairs well with AuthProvider's setOnUnauthorized(signOut) for automatic session-expiry recovery (auth.tsx:27).",
+    "AuthGate returns null while ready=false to avoid a login-screen flash before AsyncStorage rehydration (AuthGate.tsx:18) — nice UX detail.",
+    "impostazioni.tsx signOut is triggered 1.2s after successful change so the user sees the confirmation message before being kicked back to login (line 30-31) — good.",
+    "CORS allow_origins=['*'] combined with allow_credentials=True is technically invalid per spec but the app uses Bearer tokens (not cookies) so it works; consider tightening origins for the VPS deploy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth.py",
+    "/app/test_reports/iteration_3.json",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (10/10 auth) + prior 11/11 core still green", "frontend": "100% (login, wrong-password error, main app reveal, search+chips+add-to-quote, settings open, logout, session persistence)"},
+  "seed_data_creation": "None. Auth password is auto-seeded by server lifespan on empty db (idempotent).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth suite: /app/backend/tests/test_auth.py (10 tests, needs to run WITHOUT xdist because TestChangePassword mutates global password_version — use '-o addopts=\"\"' or don't run in parallel with other auth-dependent suites). Preview password remains 'valutazioni2026' (restored at end of test_full_cycle). JWT lifetime 7d, revocation via password_version. All data endpoints require Bearer token. Frontend testIDs: login-screen, password-input, login-button, login-error, cerca-screen, search-input, search-button, chip-solo-giochi, chip-tutti, results-list, add-to-quote-button, open-settings, impostazioni-screen, current-password, new-password, confirm-password, save-password, logout-button, close-settings, settings-msg.",
+  "rca_of_issue": "N/A — feature addition verified working. Transient failure observed only when running with pytest-xdist (default config) because TestChangePassword ran in parallel with TestAuthGuard and revoked its class-scoped token. Not a product bug; documented so the next agent knows to disable xdist for this file."
+}

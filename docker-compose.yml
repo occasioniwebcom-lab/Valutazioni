@@ -1,0 +1,30 @@
+# GameLife Valutazioni — esegui tutto sul TUO server (VPS) con:
+#   docker compose up -d --build
+#
+# Poi apri:  http://IP_DEL_TUO_VPS:8001
+# (per il dominio/HTTPS vedi README_VPS.md — sezione Nginx)
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      MONGO_URL: "mongodb://mongo:27017"
+      DB_NAME: "gamelife"
+      # ⚠️ CAMBIA questa password iniziale, poi potrai cambiarla dall'app in "Impostazioni".
+      APP_PASSWORD: "valutazioni2026"
+      # ⚠️ Metti una stringa lunga e casuale tua (serve a firmare i token di accesso).
+      SECRET_KEY: "cambia-questa-chiave-con-una-stringa-lunga-e-casuale"
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

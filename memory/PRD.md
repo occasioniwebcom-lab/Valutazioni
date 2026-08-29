@@ -37,6 +37,13 @@ VideogamesItalia logo, shareable online or printable. Single-user, Italian.
   film…) via a title-based `is_game` classifier on the backend; default ON.
 - Search hardened: grid wait 12s + one retry to reduce transient empty results (the 502 the
   user saw was transient uvicorn --reload during edits).
+- Playwright browser self-heals: reinstalls Chromium on demand if /pw-browsers is reset.
+- Single shared-password login (JWT 7d, bcrypt, password_version revocation) protecting all
+  data endpoints; "Impostazioni" screen to change password + logout. Default APP_PASSWORD.
+- Self-hosting package for a VPS: Dockerfile (multi-stage: Expo web build + Playwright-python
+  runtime serving web UI at / and API at /api), docker-compose.yml (app + mongo), README_VPS.md
+  (Aruba VPS steps + Nginx/HTTPS), and prestashop-valutazioni-button.html (golden menu button).
+  Note: shared hosting (Aruba) cannot run it — needs a VPS (Cloudflare bypass requires Chromium).
 
 ## Known constraints
 - Game covers are hotlinked from gamelife.it (Cloudflare) — blank when loaded from this

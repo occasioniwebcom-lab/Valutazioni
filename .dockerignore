@@ -1,0 +1,14 @@
+**/node_modules
+**/.expo
+**/.git
+**/dist
+**/webdist
+**/__pycache__
+**/*.pyc
+frontend/.expo
+frontend/web-build
+tests
+test_reports
+memory
+*.log
+.venv

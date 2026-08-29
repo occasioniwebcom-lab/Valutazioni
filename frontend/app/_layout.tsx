@@ -9,6 +9,8 @@ import { useFonts } from "expo-font";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { PreventivoProvider } from "@/src/store/preventivo";
+import { AuthProvider } from "@/src/store/auth";
+import { AuthGate } from "@/src/components/AuthGate";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
@@ -46,10 +48,16 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <PreventivoProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false }} />
-        </PreventivoProvider>
+        <AuthProvider>
+          <PreventivoProvider>
+            <StatusBar style="dark" />
+            <AuthGate>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="impostazioni" options={{ presentation: "modal" }} />
+              </Stack>
+            </AuthGate>
+          </PreventivoProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

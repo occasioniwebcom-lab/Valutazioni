@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -23,6 +24,7 @@ const CONCURRENCY = 3;
 
 export default function CercaScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { add, has } = usePreventivo();
 
   const [query, setQuery] = useState("");
@@ -133,8 +135,15 @@ export default function CercaScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]} testID="cerca-screen">
       <View style={styles.header}>
-        <Text style={styles.h1}>Valutazioni</Text>
-        <Text style={styles.sub}>Cerca un gioco e leggi la valutazione buyback</Text>
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.h1}>Valutazioni</Text>
+            <Text style={styles.sub}>Cerca un gioco e leggi la valutazione buyback</Text>
+          </View>
+          <Pressable testID="open-settings" onPress={() => router.push("/impostazioni")} hitSlop={8} style={styles.settingsBtn}>
+            <Feather name="settings" size={20} color={colors.onSurfaceTertiary} />
+          </Pressable>
+        </View>
         <View style={styles.searchBox}>
           <Feather name="search" size={18} color={colors.muted} />
           <TextInput
@@ -266,6 +275,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   h1: { fontFamily: font.bold, fontSize: fontSize["2xl"], color: colors.onSurface },
+  titleRow: { flexDirection: "row", alignItems: "center" },
+  settingsBtn: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },
   sub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
   searchBox: {
     flexDirection: "row",
