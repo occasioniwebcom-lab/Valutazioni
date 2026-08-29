@@ -31,7 +31,12 @@ _fetch_sem = asyncio.Semaphore(4)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await scraper.start_browser()
+    try:
+        await scraper.start_browser()
+    except Exception as e:  # noqa: BLE001
+        # Don't crash the API if the browser can't launch yet; it will be
+        # (re)installed and launched on demand on the first request.
+        logger.error("Browser startup failed (will retry on demand): %s", e)
     try:
         await db.games.create_index("url", unique=True)
         await db.searches.create_index("query")

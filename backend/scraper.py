@@ -7,6 +7,7 @@ fresh browser context per attempt. Results are cached in MongoDB (see server.py)
 import asyncio
 import re
 import os
+import sys
 import logging
 from typing import Optional
 
@@ -26,6 +27,25 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 _pw = None
 _browser = None
 _launch_lock = asyncio.Lock()
+_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+
+
+async def _install_chromium():
+    """Download the Chromium build matching the installed Playwright version.
+
+    The browser cache (/pw-browsers) can be reset when the container restarts, or
+    provisioned with a mismatched build. Reinstalling on demand makes startup
+    self-healing across preview restarts and fresh deploy environments.
+    """
+    logger.info("Installing Playwright chromium (self-heal)...")
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "playwright", "install", "chromium",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    out, _ = await proc.communicate()
+    logger.info("playwright install finished rc=%s", proc.returncode)
+    if out:
+        logger.info("playwright install output tail: %s", out.decode(errors="ignore")[-400:])
 
 
 async def start_browser():
@@ -33,12 +53,20 @@ async def start_browser():
     async with _launch_lock:
         if _browser is not None and _browser.is_connected():
             return _browser
-        _pw = await async_playwright().start()
-        _browser = await _pw.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-        )
-        logger.info("Playwright chromium launched")
+        if _pw is None:
+            _pw = await async_playwright().start()
+        for attempt in range(2):
+            try:
+                _browser = await _pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+                logger.info("Playwright chromium launched")
+                return _browser
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                if attempt == 0 and ("Executable doesn't exist" in msg or "playwright install" in msg):
+                    await _install_chromium()
+                    continue
+                logger.error("Chromium launch failed: %s", msg)
+                raise
         return _browser
 
 
