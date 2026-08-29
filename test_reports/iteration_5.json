@@ -1,0 +1,32 @@
+{
+  "summary": "LOGOUT FIX NOT VERIFIED — the regression from iteration_4 still reproduces. The main agent changed impostazioni.tsx:70 from router.replace('/cerca') to router.replace('/'), but the router now emits a different-target but semantically-identical warning: \"The action 'REPLACE' with payload {name:'index',params:{}} was not handled by any navigator. Do you have a route named 'index'?\". Because the REPLACE is dropped, the underlying router state remains on /impostazioni; signOut() then flips AuthGate to show login-screen (good), but on successful re-login AuthGate re-renders children and Expo Router restores the last route /impostazioni — so the user sees the Impostazioni screen instead of Cerca (search-input NOT visible). Reproduction confirmed on the web preview: login 1234 -> open-settings -> logout-button -> login-screen shown -> login 1234 again -> impostazioni-screen visible (search-input hidden). Two regression checks (search 'zelda', change-password TEMP round-trip) could NOT be executed because the app is stuck on Impostazioni after re-login. Password state left at '1234' (verified via curl /api/login 200 pre-test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "impostazioni.tsx logout-button",
+        "issue": "router.replace('/') still fails because /impostazioni is presented as a modal on the root Stack — from that modal context expo-router cannot resolve a REPLACE targeting the root 'index' route (warning: REPLACE payload {name:'index'} not handled by any navigator). After signOut, AuthGate shows login; on re-login the last non-replaced route (/impostazioni) is restored and the user is stuck on Impostazioni instead of Cerca. Reference: /app/frontend/app/impostazioni.tsx:70",
+        "testID": "logout-button",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix impostazioni.tsx line 70 logout onPress. `router.replace('/')` does NOT work either because Impostazioni is a modal on the root Stack (see /app/frontend/app/_layout.tsx:56 presentation:'modal') and the root REPLACE gets dropped in that context. Suggested fixes to try (in order): (1) Dismiss the modal first, then swap auth — e.g. `router.back(); signOut();` (AuthGate will render login-screen on top and after re-login the restored route will be /cerca, not /impostazioni). (2) `router.dismissAll(); signOut();`. (3) Reset the navigator explicitly via `navigation.reset({ index:0, routes:[{ name:'(tabs)' }] })`. (4) Move the settings screen inside the (tabs) group as a non-tab-bar route so it isn't a modal sibling. Verify: login -> open-settings -> logout -> login again -> search-input must be visible; impostazioni-screen must NOT be visible; no 'REPLACE not handled by any navigator' warning in console."
+  ],
+  "critical_code_review_comments": [
+    "impostazioni.tsx:70 — the underlying problem is that Impostazioni is mounted as a modal via `_layout.tsx: <Stack.Screen name=\"impostazioni\" options={{ presentation: 'modal' }} />`. From a modal, expo-router treats the modal as the active screen; calling router.replace on the underlying stack routes ('/cerca' or '/') doesn't get handled because the modal itself is what needs to be dismissed. Dismiss-first-then-signOut (or dismissAll) is the idiomatic solution.",
+    "impostazioni.tsx:70 — signOut() is invoked AFTER router.replace(), but because auth state toggling is what actually causes AuthGate to show login-screen, the order works visually today only by accident. It would be safer to call `router.dismissAll()` first so the modal state is cleaned, then signOut()."
+  ],
+  "updated_files": ["/app/test_reports/iteration_5.json"],
+  "success_rate": {"backend": "100% (login endpoint verified)", "frontend": "0% on the target flow — logout+re-login still lands on Impostazioni, not Cerca"},
+  "seed_data_creation": "None. Password remains '1234' (change-password regression was NOT executed because the app was stuck on Impostazioni after re-login).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Password '1234'. Repro: (1) goto /, wait login-screen, fill password-input '1234', tap login-button (2) wait search-input on /cerca (3) tap open-settings, wait impostazioni-screen (4) tap logout-button, wait login-screen (5) fill password-input '1234', tap login-button (6) EXPECTED: search-input visible; ACTUAL: impostazioni-screen visible, search-input NOT visible. Console shows exactly ONE new warning: `The action 'REPLACE' with payload {\"name\":\"index\",\"params\":{}} was not handled by any navigator. Do you have a route named 'index'?`. Root cause: /impostazioni is a modal (see _layout.tsx:56), REPLACE from a modal context to a sibling of the underlying stack is dropped. Try `router.dismissAll()` or `router.back()` BEFORE `signOut()` — do NOT combine with router.replace to any target.",
+  "rca_of_issue": "Impostazioni is registered as a modal-presentation Stack.Screen in app/_layout.tsx. When the user is on the modal (/impostazioni), calling `router.replace('/')` (or '/cerca' as before) attempts to REPLACE inside a navigator context where that target route isn't the currently-focused/mounted route — expo-router drops the action and prints the warning. `signOut()` fires immediately after and flips AuthGate to render <LoginScreen/> above the Stack. On re-login AuthGate rerenders <Stack/>, which restores its last saved route: /impostazioni (because the earlier REPLACE never took effect). The user therefore sees Impostazioni after logging in again. The fix is to first tear down the modal (`router.dismissAll()` or `router.back()`) so the router's last route becomes /cerca (or /), then call signOut(). No REPLACE is needed."
+}

@@ -1,0 +1,36 @@
+{
+  "summary": "LOGOUT PATH still FAILS after FIX v3 (structural). Change-password path fully PASSES. Regression search 'zelda' PASSES (7 results). Password restored to '1234' at end (verified via /api/login → 200). No 'GO_BACK'/'REPLACE not handled' navigator warnings this iteration — the structural change (impostazioni no longer a modal) did silence the warnings, but the primary logout expectation is still broken: after login → open-settings → logout-button → re-login, the app lands on /impostazioni (URL literally reads .../impostazioni and impostazioni-screen is visible; search-input is NOT visible). Root cause: on web, router.back() from /impostazioni + setTimeout(signOut, 150ms) — signOut fires before the back-navigation actually commits the URL/route to /cerca, so when AuthGate re-mounts <Stack/> on re-login, expo-router restores the last URL (/impostazioni) and the user is stuck on the settings screen.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "impostazioni.tsx logout-button",
+        "issue": "After logout + re-login user lands on /impostazioni, NOT on /cerca. router.back()+setTimeout(signOut,150) sequence: signOut runs before Expo Router commits the URL to /cerca on web, so on re-login the restored route is /impostazioni. Observed URL post re-login: .../impostazioni; impostazioni-screen visible; search-input NOT visible; NO navigator warnings emitted. Reference: /app/frontend/app/impostazioni.tsx:70",
+        "testID": "logout-button",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "impostazioni.tsx:70 — the router.back()→setTimeout(signOut,150) approach still fails on the web preview. Suggested fixes (try in order): (1) Replace `router.back()` with `router.replace('/cerca')` (now safe because impostazioni is no longer a modal after _layout.tsx cleanup — REPLACE will not be dropped) and then setTimeout signOut for a small delay (or drop the timeout entirely). (2) Move the navigation-reset into the auth store: on successful `signIn(...)` always call `router.replace('/cerca')` (or `/`) so re-login ALWAYS lands on Cerca regardless of the last URL — this makes logout robust to any pre-signOut route. (3) Await a microtask before signOut: `router.back(); await new Promise(r=>requestAnimationFrame(()=>r(null))); signOut();` — but option (2) is the safest structural fix. Verify: login 1234 → open-settings → logout-button → login-screen → login 1234 → search-input MUST be visible AND URL should not be /impostazioni; no navigator warnings.",
+    "Optional: after fix, keep this iteration's regression tests (search 'zelda' 7 results, change-password round-trip 1234↔TEMP1234, staying-logged-in behavior) to confirm no regressions."
+  ],
+  "critical_code_review_comments": [
+    "impostazioni.tsx:70 — using setTimeout(signOut, 150) after router.back() is a race condition on web. Fire-and-forget timers coupled with router side effects don't guarantee ordering; better to trigger navigation in the auth store on successful signIn so logout+re-login is deterministic.",
+    "impostazioni.tsx:35 — same 900ms setTimeout(router.back, 900) pattern is used for change-password success; it happened to work in this test but is fragile. Consider awaiting a state settle instead of arbitrary timeouts."
+  ],
+  "updated_files": ["/app/test_reports/iteration_6.json"],
+  "success_rate": {
+    "backend": "100% (POST /api/login with '1234' → 200, /api/change-password round-trip → 200)",
+    "frontend": "66% — CHANGE-PASSWORD path PASS, regression search PASS, LOGOUT path FAIL"
+  },
+  "seed_data_creation": "None. Password toggled 1234→TEMP1234→1234 during test; final state is '1234' (verified via /api/login 200).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Password '1234'. Repro of open bug: (1) https://gamelife-tracker-2.preview.emergentagent.com → login-screen → fill password-input '1234' → login-button (2) wait search-input on /cerca (3) tap open-settings → wait impostazioni-screen (4) tap logout-button → wait login-screen (5) fill password-input '1234' → login-button (6) EXPECTED: search-input visible, URL=/cerca. ACTUAL: impostazioni-screen visible, URL=/impostazioni, search-input NOT visible. NO navigator warnings this run (structural modal→push fix removed those). Console warnings observed are unrelated deprecations only ('shadow*' style props deprecated; props.pointerEvents deprecated). Change-password path is fully green: 1234→TEMP1234 shows 'Password aggiornata correttamente.', modal auto-closes to /cerca, still logged in; TEMP1234→1234 same. Search 'zelda' (submit via Enter key) → results-list with 7 items. Cover images blank as expected (Cloudflare 403).",
+  "rca_of_issue": "Impostazioni is now a normal Stack push (modal presentation removed in _layout.tsx, good). Logout onPress does: router.back(); setTimeout(signOut, 150). On web, router.back() ultimately delegates to history.back(); the URL/route update is async and NOT guaranteed to commit within 150ms before signOut() flips AuthGate to render <LoginScreen/> and unmount <Stack/>. When the user re-logs in, AuthGate re-mounts <Stack/> and Expo Router restores the current URL — which is still /impostazioni because back() never got a chance to commit — so the user sees Impostazioni instead of Cerca. Recommended fix: perform the target-route navigation in the auth store on successful signIn (`router.replace('/cerca')` inside `signIn`) so re-login is always deterministic, independent of whatever route was left in the URL by logout. Alternatively, in impostazioni.tsx logout, use `router.replace('/cerca')` (now safe since impostazioni is not a modal) instead of router.back()+timeout."
+}

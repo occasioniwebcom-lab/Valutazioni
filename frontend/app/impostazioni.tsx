@@ -12,7 +12,7 @@ import { useAuth } from "@/src/store/auth";
 export default function ImpostazioniScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, signIn } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -26,9 +26,13 @@ export default function ImpostazioniScreen() {
     setBusy(true);
     try {
       await changePassword(current, next);
+      // Changing the password revokes the current token, so immediately get a
+      // fresh one with the new password (keeps the user logged in) and close.
+      await signIn(next);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      setMsg({ type: "ok", text: "Password cambiata. Effettua di nuovo l'accesso." });
-      setTimeout(() => signOut(), 1200);
+      setMsg({ type: "ok", text: "Password aggiornata correttamente." });
+      setCurrent(""); setNext(""); setConfirm("");
+      setTimeout(() => router.back(), 900);
     } catch (e: any) {
       setMsg({ type: "err", text: e?.message || "Errore" });
     } finally {

@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -14,6 +15,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const prevToken = useRef<string | null>(null);
+
+  // After logging in from a logged-out state, always land on the main screen
+  // (deterministic on web, where the browser URL could otherwise be restored to
+  // a deep route like /impostazioni). Does NOT fire on token refresh while authed.
+  useEffect(() => {
+    if (!prevToken.current && token) {
+      setTimeout(() => { try { router.replace("/cerca"); } catch { /* noop */ } }, 0);
+    }
+    prevToken.current = token;
+  }, [token]);
 
   if (!ready) return null;
   if (token) return <>{children}</>;

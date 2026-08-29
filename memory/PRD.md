@@ -40,6 +40,9 @@ VideogamesItalia logo, shareable online or printable. Single-user, Italian.
 - Playwright browser self-heals: reinstalls Chromium on demand if /pw-browsers is reset.
 - Single shared-password login (JWT 7d, bcrypt, password_version revocation) protecting all
   data endpoints; "Impostazioni" screen to change password + logout. Default APP_PASSWORD.
+- Auth navigation hardened (web): after change-password the app refreshes the token and stays
+  logged in; AuthGate redirects to /cerca on every logged-out→logged-in transition so
+  logout→re-login never gets stuck on /impostazioni (Impostazioni is a normal stack screen).
 - Self-hosting package for a VPS: Dockerfile (multi-stage: Expo web build + Playwright-python
   runtime serving web UI at / and API at /api), docker-compose.yml (app + mongo), README_VPS.md
   (Aruba VPS steps + Nginx/HTTPS), and prestashop-valutazioni-button.html (golden menu button).

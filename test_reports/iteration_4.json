@@ -1,0 +1,43 @@
+{
+  "summary": "Primary bug FIX VERIFIED (change-password UX no longer stuck): after saving a new password, the app shows 'Password aggiornata correttamente.', auto-navigates from /impostazioni back to /cerca within ~1s, keeps the user logged in with a freshly-issued token (search 'zelda' immediately after works — no login screen appears), and a full round-trip change (1234 -> TEMP_ABCD -> 1234) completes cleanly. Backend: 5/5 pytest cases pass in /app/backend/tests/test_change_pw_flow.py (login 200 for '1234', 401 for wrong, /api/search 401 without Bearer / 200 with, change-password revokes old token via password_version, old password stops working, new password works, restore cycle back to '1234'). Final password state RESTORED to '1234' (verified via curl 200). REGRESSION FOUND on the logout button in Impostazioni: tapping Esci does `router.replace('/cerca'); signOut()`, but the router.replace throws a runtime error 'The action REPLACE with payload {name:\"(tabs)\", screen:\"cerca\"} was not handled by any navigator. Do you have a route named (tabs)?' so the internal router state stays on /impostazioni. After signOut renders the login-screen, when the user logs in again AuthGate re-renders children and the previously-stored /impostazioni route becomes visible — reproducing the ORIGINAL bug on the logout+re-login path (search-input is NOT visible, impostazioni-screen IS visible). Non-blocking web warnings unchanged (shadow*, pointerEvents, useNativeDriver).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "impostazioni.tsx logout-button",
+        "issue": "Regression: `router.replace('/cerca'); signOut()` fails with routing error 'was not handled by any navigator. Do you have a route named (tabs)?' — replace never takes effect, so the router remains on /impostazioni. After re-login the user lands on Impostazioni instead of Cerca (exact original bug reported). Reference: /app/frontend/app/impostazioni.tsx:70",
+        "testID": "logout-button",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warnings persist (non-blocking): 'shadow*' deprecated, 'props.pointerEvents' deprecated, `useNativeDriver` not supported on web."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_change_pw_flow.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix the logout regression in /app/frontend/app/impostazioni.tsx line 70. The route `/cerca` sits inside the `(tabs)` group so `router.replace('/cerca')` is unresolvable while the current screen is the sibling `/impostazioni` route. Options: (a) `router.replace('/(tabs)/cerca')` with the group in the path, (b) `router.dismissAll()` first then `router.replace('/(tabs)/cerca')`, or (c) call `router.replace('/')` (the index screen at /app/frontend/app/index.tsx) — simplest and matches the fresh-load flow, then let AuthGate show login. Verify with the exact reproduction: login -> open Impostazioni -> Esci -> login again -> expect search-input visible on /cerca (and NOT impostazioni-screen)."
+  ],
+  "critical_code_review_comments": [
+    "impostazioni.tsx:22-41 change-password flow correctly calls `signIn(next)` right after `changePassword` to swap the revoked token for a fresh one, then delays 900ms before `router.back()` so the success message is visible — this is the exact fix that solved the primary bug and it works end-to-end on the web preview.",
+    "impostazioni.tsx:70 logout `router.replace('/cerca')` triggers an unhandled REPLACE action because Expo Router can't resolve the tabs-nested `cerca` from a sibling `/impostazioni` route without the `(tabs)` group prefix. Use `router.replace('/(tabs)/cerca')` or `router.replace('/')`.",
+    "server.py auth is clean: password_version bump on change atomically revokes old JWTs via the `pv` claim check in require_auth (line 162-164), and the seed is idempotent (line 58-66)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_change_pw_flow.py",
+    "/app/test_reports/iteration_4.json",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (5/5 change_pw_flow + 10/10 prior auth)", "frontend": "80% — primary bug FIXED; logout+re-login regression still reproduces"},
+  "seed_data_creation": "None. Password left at '1234' (verified via /api/login 200).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Password is '1234'. To reproduce the remaining regression on the web preview: goto /, login with 1234, tap open-settings, tap logout-button, wait for login-screen, login again with 1234 — you should be on /cerca (search-input) but you instead see /impostazioni (impostazioni-screen). The change-password happy path (change from 1234 to X then back to 1234 without logging out) is fully working: success toast, auto-close to /cerca, subsequent search works without a login prompt. testIDs available: login-screen, password-input, login-button, login-error, search-input, open-settings, impostazioni-screen, current-password, new-password, confirm-password, save-password, settings-msg, logout-button, close-settings.",
+  "rca_of_issue": "Router error 'The action REPLACE with payload {name:(tabs), screen:cerca} was not handled by any navigator. Do you have a route named (tabs)?'. In Expo Router, `/cerca` under `app/(tabs)/cerca.tsx` needs to be reached with the group syntax when the current route (`app/impostazioni.tsx`) is a sibling of the `(tabs)` group. `router.replace('/cerca')` gets resolved into a REPLACE targeting the `(tabs)` navigator, but that navigator isn't mounted from the /impostazioni context, so the action is dropped. Result: URL and internal router state stay at /impostazioni, then signOut runs → AuthGate mounts login-screen, and on re-login AuthGate re-renders children → Expo Router restores its saved route (/impostazioni) and the user is stuck. Fix: change to `router.replace('/(tabs)/cerca')` or `router.replace('/')`."
+}

@@ -53,7 +53,7 @@ export default function RootLayout() {
             <StatusBar style="dark" />
             <AuthGate>
               <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="impostazioni" options={{ presentation: "modal" }} />
+                <Stack.Screen name="impostazioni" />
               </Stack>
             </AuthGate>
           </PreventivoProvider>

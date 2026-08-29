@@ -1,0 +1,26 @@
+{
+  "summary": "FIX v4 (AuthGate redirect on logged-out→logged-in transition) FULLY WORKS. LOGOUT PATH now PASSES: login '1234' → open-settings → logout-button → login-screen → re-login '1234' → lands on /cerca (search-input visible, impostazioni-screen NOT visible, URL=/cerca). Fresh login also lands on Cerca. Regression change-password round-trip 1234→TEMP1234→1234 keeps user logged in and returns to Cerca. Search 'zelda' returns results-list with 7 items (Solo giochi filter). Password restored to '1234' at end. No navigator warnings ('REPLACE/GO_BACK not handled') observed this iteration. Only benign deprecation warnings ('shadow*' style props, props.pointerEvents, useNativeDriver) unrelated to the fix.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AuthGate.tsx:23-28 — The redirect-on-login effect uses setTimeout(...,0) + router.replace('/cerca'). Works reliably in tests, but arbitrary-timer patterns can be brittle; a queueMicrotask/requestAnimationFrame or navigating synchronously after signIn resolves are more explicit. Not blocking — leaving as-is is acceptable.",
+    "impostazioni.tsx:35 — setTimeout(router.back, 900) after password change is still an arbitrary delay; consider awaiting a settle state instead. Non-blocking (tests still green)."
+  ],
+  "updated_files": ["/app/test_reports/iteration_7.json"],
+  "success_rate": {
+    "backend": "N/A (frontend-only test)",
+    "frontend": "100% — LOGOUT PATH pass, fresh login pass, change-password round-trip pass, search zelda pass"
+  },
+  "seed_data_creation": "None. Password toggled 1234→TEMP1234→1234; final state '1234'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Password '1234'. Fix v4 lives in AuthGate.tsx: an effect on token transitions fires router.replace('/cerca') only when prevToken was null and token becomes truthy (i.e., logged-out → logged-in). Change-password path (signIn while still authed) is unaffected because prevToken.current is not null in that case. Verified: full logout→re-login flow lands on /cerca regardless of previous URL (/impostazioni). No 'not handled' navigator warnings.",
+  "rca_of_issue": "Previous fix (router.back()+setTimeout(signOut,150) in impostazioni.tsx) had a race on web: signOut fired before back-navigation committed the URL to /cerca, so upon re-login Expo Router restored the last URL (/impostazioni). Fix v4 sidesteps the race entirely by making re-login navigation deterministic at the AuthGate layer: when prevToken null → token truthy, replace to /cerca. Independent of whatever URL the browser holds after logout."
+}
