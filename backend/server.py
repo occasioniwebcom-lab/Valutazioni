@@ -90,6 +90,7 @@ class GameRow(BaseModel):
     buyback: Optional[float] = None
     priced: bool = False  # True once prices have been fetched
     is_game: bool = True  # False for accessories (amiibo, custodie, gadget…)
+    platform: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
@@ -106,6 +107,7 @@ class ProductResponse(BaseModel):
     usato: Optional[float] = None
     buyback: Optional[float] = None
     ok: bool = False
+    platform: Optional[str] = None
 
 
 class HistoryItem(BaseModel):
@@ -215,6 +217,7 @@ async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
             row.nuovo = cached.get("nuovo")
             row.usato = cached.get("usato")
             row.buyback = cached.get("buyback")
+            row.platform = cached.get("platform")
             if not row.image:
                 row.image = cached.get("image")
             row.priced = True
@@ -235,7 +238,7 @@ async def product(url: str = Query(...), title: Optional[str] = None, image: Opt
         return ProductResponse(
             url=url, title=cached.get("title") or title, image=cached.get("image") or image,
             nuovo=cached.get("nuovo"), usato=cached.get("usato"),
-            buyback=cached.get("buyback"), ok=True,
+            buyback=cached.get("buyback"), platform=cached.get("platform"), ok=True,
         )
 
     async with _fetch_sem:
@@ -245,7 +248,7 @@ async def product(url: str = Query(...), title: Optional[str] = None, image: Opt
             return ProductResponse(
                 url=url, title=cached.get("title") or title, image=cached.get("image") or image,
                 nuovo=cached.get("nuovo"), usato=cached.get("usato"),
-                buyback=cached.get("buyback"), ok=True,
+                buyback=cached.get("buyback"), platform=cached.get("platform"), ok=True,
             )
         try:
             data = await scraper.fetch_product(url)
@@ -266,7 +269,7 @@ async def product(url: str = Query(...), title: Optional[str] = None, image: Opt
             {"$set": {
                 "url": url, "title": final_title, "image": final_image,
                 "nuovo": data.get("nuovo"), "usato": data.get("usato"),
-                "buyback": data.get("buyback"), "priced": True,
+                "buyback": data.get("buyback"), "platform": data.get("platform"), "priced": True,
                 "fetched_at": now(), "viewed_at": now(),
             }, "$unset": {"deleted_at": ""}},
             upsert=True,
@@ -275,7 +278,7 @@ async def product(url: str = Query(...), title: Optional[str] = None, image: Opt
     return ProductResponse(
         url=url, title=final_title, image=final_image,
         nuovo=data.get("nuovo"), usato=data.get("usato"),
-        buyback=data.get("buyback"), ok=bool(data.get("ok")),
+        buyback=data.get("buyback"), platform=data.get("platform"), ok=bool(data.get("ok")),
     )
 
 

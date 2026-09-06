@@ -52,6 +52,7 @@ export default function CercaScreen() {
         nuovo: res.nuovo,
         usato: res.usato,
         buyback: res.buyback,
+        platform: res.platform,
         status: res.ok ? "done" : "failed",
       });
     } catch {
@@ -88,7 +89,7 @@ export default function CercaScreen() {
       const init: Record<string, PriceState> = {};
       data.results.forEach((r) => {
         init[r.url] = r.priced
-          ? { nuovo: r.nuovo, usato: r.usato, buyback: r.buyback, status: "done" }
+          ? { nuovo: r.nuovo, usato: r.usato, buyback: r.buyback, platform: r.platform, status: "done" }
           : { status: "loading" };
       });
       setPrices(init);
@@ -326,7 +327,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  sep: { height: 1, backgroundColor: colors.divider, marginLeft: 76 },
+  sep: { height: 1, backgroundColor: colors.divider, marginLeft: spacing.lg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.sm },
   idleIcon: {
     width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandTertiary,

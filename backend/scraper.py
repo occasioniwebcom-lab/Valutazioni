@@ -130,6 +130,32 @@ ACCESSORY_RE = re.compile(
 )
 
 
+def _short_platform(text: str) -> str:
+    """Normalize a platform label to a short badge (e.g. 'Nintendo Switch' -> 'Switch')."""
+    if not text:
+        return text
+    t = text.strip()
+    low = t.lower()
+    table = [
+        ("playstation 5", "PS5"), ("ps5", "PS5"),
+        ("playstation 4", "PS4"), ("ps4", "PS4"),
+        ("playstation 3", "PS3"), ("ps3", "PS3"),
+        ("playstation vita", "PS Vita"), ("ps vita", "PS Vita"), ("psp", "PSP"),
+        ("nintendo switch 2", "Switch 2"), ("switch 2", "Switch 2"),
+        ("nintendo switch", "Switch"), ("switch", "Switch"),
+        ("xbox series", "Xbox Series"), ("xbox one", "Xbox One"),
+        ("xbox 360", "Xbox 360"), ("xbox", "Xbox"),
+        ("nintendo 3ds", "3DS"), ("3ds", "3DS"),
+        ("nintendo wii u", "Wii U"), ("wii u", "Wii U"), ("wii", "Wii"),
+        ("gamecube", "GameCube"), ("dreamcast", "Dreamcast"),
+        ("pc", "PC"), ("steam", "PC"),
+    ]
+    for needle, label in table:
+        if needle in low:
+            return label
+    return t[:12]
+
+
 def _is_game(title: str) -> bool:
     """Heuristic: a result is a video game unless the title looks like an accessory/gadget."""
     if not title:
@@ -197,7 +223,22 @@ def _parse_product(html: str):
     og = soup.select_one("meta[property='og:image']")
     if og:
         image = _thumb(og.get("content"))
-    return {**prices, "title": title, "image": image, "_found_card": found_card}
+
+    # Console / platform for the results row (from og:title suffix or breadcrumb).
+    platform = None
+    ogt = soup.select_one("meta[property='og:title']")
+    if ogt and ogt.get("content"):
+        m = re.search(r"-\s*([A-Za-z0-9][A-Za-z0-9 /+.-]{0,22}?)\s*\|", ogt["content"])
+        if m:
+            platform = _short_platform(m.group(1).strip())
+    if not platform:
+        for c in soup.select(".breadcrumb a, .breadcrumb li"):
+            t = c.get_text(" ", strip=True)
+            if re.search(r"playstation|nintendo|switch|xbox|\bps[0-9]\b|wii|3ds|\bpc\b|steam|gamecube|dreamcast", t, re.I):
+                platform = _short_platform(t.strip())
+                break
+
+    return {**prices, "title": title, "image": image, "platform": platform, "_found_card": found_card}
 
 
 async def search_games(query: str, limit: int = 20):
@@ -232,7 +273,7 @@ async def fetch_product(url: str, attempts: int = 3):
     if not url.startswith(BASE):
         return None
     browser = await _get_browser()
-    last = {"nuovo": None, "usato": None, "buyback": None, "title": None, "image": None}
+    last = {"nuovo": None, "usato": None, "buyback": None, "title": None, "image": None, "platform": None}
     for attempt in range(attempts):
         ctx = await browser.new_context(locale="it-IT", timezone_id="Europe/Rome", user_agent=UA)
         try:
@@ -250,7 +291,7 @@ async def fetch_product(url: str, attempts: int = 3):
             await ctx.close()
 
         if data:
-            last = {k: data.get(k) for k in ("nuovo", "usato", "buyback", "title", "image")}
+            last = {k: data.get(k) for k in ("nuovo", "usato", "buyback", "title", "image", "platform")}
             if data.get("_found_card"):
                 return {**last, "ok": True}
         await asyncio.sleep(0.6)

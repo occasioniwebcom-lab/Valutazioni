@@ -11,6 +11,7 @@ export type PriceState = {
   nuovo?: number | null;
   usato?: number | null;
   buyback?: number | null;
+  platform?: string | null;
   status: "loading" | "done" | "failed";
 };
 
@@ -50,13 +51,20 @@ export function GameResultRow({
         transition={150}
         placeholder={undefined}
       />
+      <View style={styles.platformCol}>
+        {price.platform ? (
+          <View style={styles.platformBadge} testID="platform-badge">
+            <Text style={styles.platformText} numberOfLines={2}>{price.platform}</Text>
+          </View>
+        ) : null}
+      </View>
       <View style={styles.mid}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
 
         {loading ? (
           <View style={styles.prices}>
-            <Skeleton width={52} height={30} />
-            <Skeleton width={52} height={30} />
+            <Skeleton width={44} height={28} />
+            <Skeleton width={44} height={28} />
             <Skeleton width={64} height={30} style={{ borderRadius: radius.pill }} />
           </View>
         ) : failed ? (
@@ -96,22 +104,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
     alignItems: "center",
     backgroundColor: colors.surfaceSecondary,
   },
   cover: {
-    width: 48,
-    height: 64,
+    width: 72,
+    height: 96,
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceTertiary,
   },
+  platformCol: { width: 46, alignItems: "center", justifyContent: "center" },
+  platformBadge: {
+    backgroundColor: colors.surfaceTertiary,
+    borderColor: colors.borderStrong,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    alignItems: "center",
+  },
+  platformText: { fontFamily: font.semibold, fontSize: 11, color: colors.onSurfaceTertiary, textAlign: "center" },
   mid: { flex: 1 },
   title: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, lineHeight: 18 },
-  prices: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.sm },
-  mini: { minWidth: 46 },
-  miniLabel: { fontFamily: font.regular, fontSize: 10, color: colors.muted, marginBottom: 2 },
-  miniValue: { fontFamily: font.mono, fontSize: 13, color: colors.onSurfaceTertiary },
+  prices: { flexDirection: "row", alignItems: "flex-end", flexWrap: "wrap", gap: spacing.sm, rowGap: 6, marginTop: spacing.sm },
+  mini: { minWidth: 40 },
+  miniLabel: { fontFamily: font.regular, fontSize: 9, color: colors.muted, marginBottom: 1 },
+  miniValue: { fontFamily: font.mono, fontSize: 11, color: colors.onSurfaceTertiary },
   buybackPill: {
     backgroundColor: colors.brandTertiary,
     borderRadius: radius.md,
@@ -123,8 +142,8 @@ const styles = StyleSheet.create({
   retry: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm, paddingVertical: 2 },
   retryText: { fontFamily: font.medium, fontSize: 12, color: colors.warning },
   addBtn: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.borderStrong,

@@ -16,6 +16,7 @@ export type GameRow = {
   buyback?: number | null;
   priced: boolean;
   is_game: boolean;
+  platform?: string | null;
 };
 
 export type ProductPrices = {
@@ -25,6 +26,7 @@ export type ProductPrices = {
   nuovo?: number | null;
   usato?: number | null;
   buyback?: number | null;
+  platform?: string | null;
   ok: boolean;
 };
 

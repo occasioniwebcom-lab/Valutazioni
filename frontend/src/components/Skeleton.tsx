@@ -24,13 +24,14 @@ export function Skeleton({ width, height, style }: { width: number | string; hei
 export function SkeletonRow() {
   return (
     <View style={styles.row} testID="skeleton-row">
-      <Skeleton width={48} height={48} style={{ borderRadius: radius.sm }} />
+      <Skeleton width={72} height={96} style={{ borderRadius: radius.sm }} />
+      <Skeleton width={40} height={22} />
       <View style={styles.mid}>
         <Skeleton width="80%" height={13} />
         <Skeleton width="55%" height={13} style={{ marginTop: 6 }} />
         <View style={styles.prices}>
-          <Skeleton width={52} height={26} />
-          <Skeleton width={52} height={26} />
+          <Skeleton width={44} height={26} />
+          <Skeleton width={44} height={26} />
           <Skeleton width={64} height={26} style={{ borderRadius: radius.pill }} />
         </View>
       </View>
@@ -39,7 +40,7 @@ export function SkeletonRow() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", padding: 12, gap: 12, alignItems: "flex-start" },
+  row: { flexDirection: "row", padding: 12, gap: 8, alignItems: "center" },
   mid: { flex: 1 },
-  prices: { flexDirection: "row", gap: 10, marginTop: 10 },
+  prices: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
 });
