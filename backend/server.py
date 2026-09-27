@@ -10,7 +10,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
@@ -81,6 +81,13 @@ def now():
 
 
 # ---------- Models ----------
+class SourceOffer(BaseModel):
+    source: str  # "cex" | "ebay"
+    label: str
+    price: Optional[float] = None
+    url: Optional[str] = None
+
+
 class GameRow(BaseModel):
     url: str
     title: str
@@ -91,6 +98,8 @@ class GameRow(BaseModel):
     priced: bool = False  # True once prices have been fetched
     is_game: bool = True  # False for accessories (amiibo, custodie, gadget…)
     platform: Optional[str] = None
+    offers: List[SourceOffer] = Field(default_factory=list)  # eager-priced matches from CeX/eBay
+    source_only: bool = False
 
 
 class SearchResponse(BaseModel):
@@ -200,7 +209,7 @@ async def root():
 async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
     query = q.strip()
     try:
-        items = await scraper.search_games(query, limit=20)
+        items = await scraper.search_all(query, limit=20)
     except Exception as e:  # noqa: BLE001
         logger.exception("search failed")
         raise HTTPException(status_code=502, detail=f"Ricerca non riuscita: {e}")
@@ -210,8 +219,10 @@ async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
 
     results: List[GameRow] = []
     for it in items:
+        offers = [SourceOffer(**o) for o in it.get("offers", [])]
         row = GameRow(url=it["url"], title=it["title"] or "Senza titolo", image=it.get("image"),
-                      is_game=it.get("is_game", True))
+                  is_game=it.get("is_game", True), platform=it.get("platform"), offers=offers,
+                      priced=bool(it.get("source_only")), source_only=bool(it.get("source_only")))
         cached = await db.games.find_one({"url": it["url"]})
         if cached and cached.get("priced"):
             row.nuovo = cached.get("nuovo")

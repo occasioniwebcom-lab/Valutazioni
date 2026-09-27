@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@react-native-vector-icons/feather";
 import * as Haptics from "expo-haptics";
 
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";

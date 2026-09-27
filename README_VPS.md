@@ -47,6 +47,21 @@ Apri `docker-compose.yml` e modifica **due valori** dentro `environment:`:
   openssl rand -base64 32
   ```
 
+## 3a) Abilita i prezzi eBay automatici
+Registra un'app su [developer.ebay.com](https://developer.ebay.com/), poi crea un
+file `.env` accanto a `docker-compose.yml` con le chiavi **Production**:
+
+```dotenv
+EBAY_CLIENT_ID=il-tuo-client-id
+EBAY_CLIENT_SECRET=il-tuo-client-secret
+EBAY_MARKETPLACE_ID=EBAY_IT
+```
+
+Le chiavi restano sul server e non vanno inserite nell'app o caricate su Git. Dopo
+aver salvato `.env`, avvia/ricostruisci il servizio come nel passaggio successivo.
+La ricerca usa automaticamente solo articoli usati a prezzo fisso; se GameLife è
+bloccato, i risultati eBay diventano comunque visibili con prezzo e link all'annuncio.
+
 ## 4) Avvia
 Dalla cartella del progetto:
 

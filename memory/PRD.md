@@ -53,6 +53,17 @@ VideogamesItalia logo, shareable online or printable. Single-user, Italian.
   datacenter IP but render on real devices / residential IPs. Logo loads everywhere.
 - The source site occasionally omits price data on a request; the row shows "Riprova".
 
+## 2026-06 update
+- Expo SDK 57 upgrade completed: migrated icons `@expo/vector-icons` → `@react-native-vector-icons/feather`
+  (default import per family), removed the old CDN icon-font loader hook (`use-icon-fonts.ts`) since the
+  new library auto-registers its bundled Feather.ttf. Removed deprecated app.json keys (`newArchEnabled`,
+  `edgeToEdgeEnabled`). `expo-doctor` 20/20 pass, lint clean. Testing agent verified all screens/icons + auth flow.
+- KNOWN BLOCKER (env/IP, not code): gamelife.it now serves a Cloudflare managed challenge ("Ci siamo quasi…" /
+  "Attention Required") returning HTTP 403 to this datacenter IP. Tried: plain Playwright, stealth JS, headed
+  under Xvfb, and Patchright (undetected fork) headless+headed — all blocked. Real Chrome channel unavailable
+  on this ARM64 host. Root cause per research: datacenter/VPS IP reputation + CDP/TLS fingerprinting; no
+  browser-side fix works from a flagged IP without a clean residential proxy. Scraper code unchanged.
+
 ## Backlog / next
 - P1: Cache game covers via Emergent Object Storage so they always render (incl. previews).
 - P1: "Solo giochi" filter chip to hide accessories (amiibo/custodie) from results.

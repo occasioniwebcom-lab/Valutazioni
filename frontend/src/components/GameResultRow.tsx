@@ -1,10 +1,11 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@react-native-vector-icons/feather";
 import * as Haptics from "expo-haptics";
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
 import { formatEuro } from "@/src/format";
+import { SourceOffer } from "@/src/api";
 import { Skeleton } from "./Skeleton";
 
 export type PriceState = {
@@ -24,10 +25,29 @@ function PriceMini({ label, value }: { label: string; value?: number | null }) {
   );
 }
 
+function OfferPill({ offer }: { offer: SourceOffer }) {
+  const shortLabel = offer.source === "cex" ? "CeX" : "eBay";
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${offer.label}: ${formatEuro(offer.price)}`}
+      disabled={!offer.url}
+      onPress={() => offer.url && Linking.openURL(offer.url)}
+      style={styles.offerPill}
+      testID={`offer-pill-${offer.source}`}
+    >
+      <Text style={styles.offerLabel}>{shortLabel}</Text>
+      <Text style={styles.offerValue} numberOfLines={1}>{formatEuro(offer.price)}</Text>
+    </Pressable>
+  );
+}
+
 export function GameResultRow({
   title,
   image,
   price,
+  offers,
+  sourceOnly,
   added,
   onAdd,
   onRetry,
@@ -35,6 +55,8 @@ export function GameResultRow({
   title: string;
   image?: string | null;
   price: PriceState;
+  offers?: SourceOffer[];
+  sourceOnly?: boolean;
   added: boolean;
   onAdd: () => void;
   onRetry: () => void;
@@ -59,7 +81,7 @@ export function GameResultRow({
         ) : null}
       </View>
       <View style={styles.mid}>
-        <Text style={styles.title} numberOfLines={2}>{title}</Text>
+        <Text style={styles.title} numberOfLines={3}>{title}</Text>
 
         {loading ? (
           <View style={styles.prices}>
@@ -68,18 +90,41 @@ export function GameResultRow({
             <Skeleton width={64} height={30} style={{ borderRadius: radius.pill }} />
           </View>
         ) : failed ? (
-          <Pressable onPress={onRetry} style={styles.retry} testID="row-retry">
-            <Feather name="refresh-cw" size={12} color={colors.warning} />
-            <Text style={styles.retryText}>Prezzi non trovati · Riprova</Text>
-          </Pressable>
+          <View>
+            <Pressable onPress={onRetry} style={styles.retry} testID="row-retry">
+              <Feather name="refresh-cw" size={12} color={colors.warning} />
+              <Text style={styles.retryText}>Prezzi GameLife non trovati · Riprova</Text>
+            </Pressable>
+            {!!offers?.length && (
+              <View style={styles.prices}>
+                {offers.map((offer, index) => (
+                  <OfferPill key={`${offer.source}-${offer.url || "no-url"}-${index}`} offer={offer} />
+                ))}
+              </View>
+            )}
+          </View>
+        ) : sourceOnly ? (
+          <View style={styles.sourceFallback}>
+            <Text style={styles.unavailable}>
+              {offers?.length ? "Prezzo GameLife non disponibile" : "Risultato trovato, prezzi non disponibili"}
+            </Text>
+            <View style={styles.prices}>
+              {(offers || []).map((o, index) => (
+                <OfferPill key={`${o.source}-${o.url || "no-url"}-${index}`} offer={o} />
+              ))}
+            </View>
+          </View>
         ) : (
           <View style={styles.prices}>
             <PriceMini label="Nuovo" value={price.nuovo} />
             <PriceMini label="Usato" value={price.usato} />
             <View style={styles.buybackPill} testID="buyback-pill">
-              <Text style={styles.buybackLabel}>Valutazione</Text>
+              <Text style={styles.buybackLabel}>GameLife</Text>
               <Text style={styles.buybackValue} numberOfLines={1}>{formatEuro(price.buyback)}</Text>
             </View>
+            {(offers || []).map((o, index) => (
+              <OfferPill key={`${o.source}-${o.url || "no-url"}-${index}`} offer={o} />
+            ))}
           </View>
         )}
       </View>
@@ -126,7 +171,7 @@ const styles = StyleSheet.create({
   },
   platformText: { fontFamily: font.semibold, fontSize: 11, color: colors.onSurfaceTertiary, textAlign: "center" },
   mid: { flex: 1 },
-  title: { fontFamily: font.medium, fontSize: fontSize.base, color: colors.onSurface, lineHeight: 18 },
+  title: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.onSurface, lineHeight: 16 },
   prices: { flexDirection: "row", alignItems: "flex-end", flexWrap: "wrap", gap: spacing.sm, rowGap: 6, marginTop: spacing.sm },
   mini: { minWidth: 40 },
   miniLabel: { fontFamily: font.regular, fontSize: 9, color: colors.muted, marginBottom: 1 },
@@ -139,8 +184,18 @@ const styles = StyleSheet.create({
   },
   buybackLabel: { fontFamily: font.semibold, fontSize: 9, color: colors.onBrandTertiary, textTransform: "uppercase", letterSpacing: 0.3 },
   buybackValue: { fontFamily: font.monoSemibold, fontSize: 14, color: colors.brandPrimary },
+  offerPill: {
+    backgroundColor: colors.surfaceTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  offerLabel: { fontFamily: font.semibold, fontSize: 9, color: colors.onSurfaceTertiary, textTransform: "uppercase", letterSpacing: 0.3 },
+  offerValue: { fontFamily: font.monoSemibold, fontSize: 14, color: colors.onSurface },
   retry: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm, paddingVertical: 2 },
   retryText: { fontFamily: font.medium, fontSize: 12, color: colors.warning },
+  unavailable: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
+  sourceFallback: { gap: spacing.xs },
   addBtn: {
     width: 38,
     height: 38,

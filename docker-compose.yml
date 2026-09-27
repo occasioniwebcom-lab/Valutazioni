@@ -17,6 +17,9 @@ services:
       APP_PASSWORD: "valutazioni2026"
       # ⚠️ Metti una stringa lunga e casuale tua (serve a firmare i token di accesso).
       SECRET_KEY: "cambia-questa-chiave-con-una-stringa-lunga-e-casuale"
+      EBAY_CLIENT_ID: ${EBAY_CLIENT_ID:-}
+      EBAY_CLIENT_SECRET: ${EBAY_CLIENT_SECRET:-}
+      EBAY_MARKETPLACE_ID: ${EBAY_MARKETPLACE_ID:-EBAY_IT}
     depends_on:
       - mongo
 

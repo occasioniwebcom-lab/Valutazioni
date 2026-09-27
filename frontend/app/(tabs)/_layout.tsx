@@ -1,7 +1,7 @@
 import React from "react";
 import { Platform } from "react-native";
 import { Tabs } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@react-native-vector-icons/feather";
 import { colors, font } from "@/src/theme";
 import { usePreventivo } from "@/src/store/preventivo";
 

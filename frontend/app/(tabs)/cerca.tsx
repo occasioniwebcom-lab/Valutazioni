@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@react-native-vector-icons/feather";
 import * as Haptics from "expo-haptics";
 
 import { colors, font, fontSize, radius, spacing } from "@/src/theme";
@@ -126,6 +126,8 @@ export default function CercaScreen() {
         title={item.title}
         image={item.image}
         price={p}
+        offers={item.offers}
+        sourceOnly={item.source_only}
         added={has(item.url)}
         onAdd={() => onAdd(item)}
         onRetry={() => onRetry(item)}

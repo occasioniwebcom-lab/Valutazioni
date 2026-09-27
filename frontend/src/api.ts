@@ -7,6 +7,13 @@ let onUnauthorized: (() => void) | null = null;
 export function setAuthToken(t: string | null) { authToken = t; }
 export function setOnUnauthorized(cb: (() => void) | null) { onUnauthorized = cb; }
 
+export type SourceOffer = {
+  source: "cex" | "ebay";
+  label: string;
+  price?: number | null;
+  url?: string | null;
+};
+
 export type GameRow = {
   url: string;
   title: string;
@@ -17,6 +24,8 @@ export type GameRow = {
   priced: boolean;
   is_game: boolean;
   platform?: string | null;
+  offers: SourceOffer[];
+  source_only?: boolean;
 };
 
 export type ProductPrices = {

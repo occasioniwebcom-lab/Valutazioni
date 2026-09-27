@@ -1,0 +1,200 @@
+"""eBay.it search using the official Browse API when credentials are configured."""
+import asyncio
+import base64
+import logging
+import os
+import re
+import time
+from pathlib import Path
+from urllib.parse import urlencode
+
+from bs4 import BeautifulSoup
+import requests
+from dotenv import load_dotenv
+from starlette.concurrency import run_in_threadpool
+
+from . import browser as browser_mod
+from .utils import parse_price
+
+logger = logging.getLogger("scrapers.ebay")
+
+BASE = "https://www.ebay.it"
+API_BASE = os.environ.get("EBAY_API_BASE", "https://api.ebay.com").rstrip("/")
+MARKETPLACE_ID = os.environ.get("EBAY_MARKETPLACE_ID", "EBAY_IT")
+_NON_GAME_TITLE = re.compile(
+    r"\b(empty box|box only|no game|no\s+gioco|senza gioco|senza disco|solo scatola|"
+    r"solo custodia|solo manuale|scatola vuota|"
+    r"advertisement|annuncio pubblicitario|poster|banner|action figure|figurine?|"
+    r"statuette?|modellino|trading cards?|carte collezionabili|memory card|"
+    r"controller|arcade stick|adesivi?|sticker|peluche|plush|portachiavi|"
+    r"artbook|soundtrack|guida strategica|calendario|calendar|inserto|insert|"
+    r"promo|gift|lotto|bundle|multi.?pack)\b|\bgiochi\s+x\s+\d+\b|"
+    r"\bgiochi\s+(xbox|playstation|ps[2345])\b",
+    re.I,
+)
+_token = None
+_token_expires_at = 0
+_token_lock = asyncio.Lock()
+
+
+def _credentials():
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    return os.environ.get("EBAY_CLIENT_ID"), os.environ.get("EBAY_CLIENT_SECRET")
+
+
+def _fetch_access_token(client_id: str, client_secret: str):
+    credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    response = requests.post(
+        f"{API_BASE}/identity/v1/oauth2/token",
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data={
+            "grant_type": "client_credentials",
+            "scope": "https://api.ebay.com/oauth/api_scope",
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    body = response.json()
+    return body["access_token"], int(body.get("expires_in", 7200))
+
+
+async def _get_access_token():
+    global _token, _token_expires_at
+    if _token and time.monotonic() < _token_expires_at:
+        return _token
+    client_id, client_secret = _credentials()
+    if not client_id or not client_secret:
+        return None
+    async with _token_lock:
+        if _token and time.monotonic() < _token_expires_at:
+            return _token
+        _token, expires_in = await run_in_threadpool(_fetch_access_token, client_id, client_secret)
+        _token_expires_at = time.monotonic() + max(0, expires_in - 60)
+        return _token
+
+
+def _parse_api_results(body: dict, limit: int):
+    items = []
+    for entry in body.get("itemSummaries", []):
+        price = entry.get("price") or {}
+        if price.get("currency") != "EUR":
+            continue
+        if "FIXED_PRICE" not in entry.get("buyingOptions", []):
+            continue
+        if entry.get("conditionId") != "3000":
+            continue
+        try:
+            amount = float(price["value"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        item_url = entry.get("itemWebUrl")
+        title = entry.get("title")
+        if not item_url or not title:
+            continue
+        categories = entry.get("categories") or []
+        category_names = " ".join(str(category.get("categoryName", "")) for category in categories)
+        if categories and re.search(
+            r"merchandise|merchandising|controller|accessor|collectible|figure|poster|"
+            r"manual|box art|card|sticker|music|soundtrack|toys",
+            category_names,
+            re.I,
+        ):
+            continue
+        if _NON_GAME_TITLE.search(title) or re.search(r"art\s?book|display\s+card|promo\s+display", title, re.I):
+            continue
+        image = (entry.get("image") or {}).get("imageUrl")
+        items.append({"title": title, "url": item_url, "image": image, "price": amount})
+    return sorted(items, key=lambda item: item["price"])[:limit]
+
+
+def _search_api(query: str, token: str, limit: int):
+    response = requests.get(
+        f"{API_BASE}/buy/browse/v1/item_summary/search",
+        params={
+            "q": query,
+            "category_ids": "1249",
+            "filter": "conditionIds:{3000},buyingOptions:{FIXED_PRICE}",
+            "limit": min(max(limit * 3, 50), 100),
+            "sort": "price",
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE_ID,
+            "Accept": "application/json",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _parse_results(html: str):
+    soup = BeautifulSoup(html, "lxml")
+    items = []
+    for card in soup.select("li.s-item"):
+        title_el = card.select_one(".s-item__title")
+        price_el = card.select_one(".s-item__price")
+        link_el = card.select_one("a.s-item__link")
+        if not title_el or not price_el or not link_el:
+            continue
+        title = title_el.get_text(" ", strip=True)
+        if not title or title.lower().startswith("nuova inserzione") or title.lower() == "annuncio":
+            continue
+        price_text = price_el.get_text(" ", strip=True)
+        # Price ranges ("EUR 10,00 a EUR 20,00") -> take the lower bound.
+        price_text = re.split(r"\s+a\s+", price_text, maxsplit=1)[0]
+        price = parse_price(price_text)
+        if price is None:
+            continue
+        url = link_el.get("href")
+        if not url:
+            continue
+        img_el = card.select_one(".s-item__image img, img")
+        image = img_el.get("src") if img_el else None
+        items.append({"title": title, "url": url.split("?")[0], "image": image, "price": price})
+    return sorted(items, key=lambda item: item["price"])
+
+
+async def search_used_bin(query: str, limit: int = 20):
+    """Search eBay.it for used items sold as Buy It Now, returning listing prices."""
+    client_id, client_secret = _credentials()
+    if client_id and client_secret:
+        try:
+            token = await _get_access_token()
+            body = await run_in_threadpool(_search_api, query, token, limit)
+            return _parse_api_results(body, limit)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("eBay Browse API search failed (%s): %s", query, e)
+            return []
+
+    params = {
+        "_nkw": query.strip(),
+        "_sacat": "0",
+        "LH_ItemCondition": "3000",
+        "LH_BIN": "1",
+        "_sop": "15",
+        "_ipg": "60",
+    }
+    url = f"{BASE}/sch/i.html?{urlencode(params)}"
+    ctx = await browser_mod.new_context()
+    try:
+        page = await ctx.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        try:
+            await page.wait_for_selector("li.s-item", timeout=12000)
+        except Exception:  # noqa: BLE001
+            pass
+        html = await page.content()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ebay search failed (%s): %s", query, e)
+        return []
+    finally:
+        await ctx.close()
+    try:
+        return _parse_results(html)[:limit]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ebay parse failed (%s): %s", query, e)
+        return []

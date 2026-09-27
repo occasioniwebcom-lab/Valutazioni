@@ -1,0 +1,226 @@
+"""GameLife.it scraper using Playwright (bypasses Cloudflare from this environment).
+
+The site (Odoo) rate-limits bursts and intermittently serves product pages without
+the server-rendered price cards, so product fetches use a small retry loop with a
+fresh browser context per attempt. Results are cached in MongoDB (see server.py).
+"""
+import asyncio
+import difflib
+import re
+import logging
+
+from bs4 import BeautifulSoup
+
+from . import browser as browser_mod
+from .match import normalize_title
+from .utils import parse_price, short_platform
+
+logger = logging.getLogger("scrapers.gamelife")
+
+BASE = "https://www.gamelife.it"
+
+
+def _thumb(url):
+    """Downsize Odoo image URLs to a lighter thumbnail."""
+    if not url:
+        return None
+    if url.startswith("/"):
+        url = BASE + url
+    return re.sub(r"image_\d+", "image_256", url)
+
+
+ACCESSORY_RE = re.compile(
+    r"\b(amiibo|funko|pop!?|peluche|plush|custodia|cover|cavo|caricabatteri\w*|adattatore|"
+    r"controller|joy-?con|volante|borsa|zaino\w*|cuffi\w*|headset|auricolari|steelbook|"
+    r"gadget|magliet\w*|t-shirt|tazza|mug|poster|statuin\w*|statua|figure|figures|spill\w*|"
+    r"felpa|cappell\w*|tappetino|mousepad|dock|supporto|stand|batteria|memory card|"
+    r"protezione|pellicola|grip|skin|lampada|lamp|portafogli\w*|wallet|sciarpa|calzini|"
+    r"carte da gioco|playing cards|sticker|adesiv\w*|termos|borraccia|orologio|sveglia|"
+    r"puzzle|lego|portachiav\w*|bundle accessori|playset|interattiv\w*|il film|blu-?ray|"
+    r"dvd|4k ultra|steelbook)\b",
+    re.I,
+)
+
+
+def _is_game(title: str) -> bool:
+    """Heuristic: a result is a video game unless the title looks like an accessory/gadget."""
+    if not title:
+        return True
+    return ACCESSORY_RE.search(title) is None
+
+
+def _platform_from_text(*values):
+    text = " ".join(value or "" for value in values)
+    if not text:
+        return None
+    if not re.search(
+        r"playstation|\bps[1-5]\b|vita|psp|nintendo|switch|xbox|wii|3ds|gamecube|"
+        r"dreamcast|\bpc\b|steam",
+        text,
+        re.I,
+    ):
+        return None
+    return short_platform(text)
+
+
+def _parse_grid(html: str):
+    soup = BeautifulSoup(html, "lxml")
+    items = []
+    seen = set()
+    for card in soup.select(".oe_product"):
+        a = card.select_one("a[href]")
+        if not a:
+            continue
+        href = a.get("href") or ""
+        if not href or href.startswith("#"):
+            continue
+        url = BASE + href if href.startswith("/") else href
+        if url in seen:
+            continue
+        seen.add(url)
+        h = card.select_one("h2")
+        title = (h.get_text(" ", strip=True) if h else a.get("title") or "").strip()
+        img = card.select_one("img.oe_product_image_img") or card.select_one("img")
+        image = _thumb(img.get("src") if img else None)
+        pid_input = card.select_one("input[name='product_id']")
+        pid = pid_input.get("value") if pid_input else None
+        items.append({
+            "title": title,
+            "url": url,
+            "image": image,
+            "product_id": pid,
+            "is_game": _is_game(title),
+            "platform": _platform_from_text(title),
+        })
+    return items
+
+
+def rank_search_results(query: str, items: list):
+    query_title = normalize_title(query)
+    query_words = set(query_title.split())
+    if not query_title or not items:
+        return items
+
+    def score(item):
+        title = normalize_title(item.get("title", ""))
+        title_words = set(title.split())
+        if not title_words:
+            return 0.0
+        coverage = len(query_words & title_words) / len(query_words)
+        precision = len(query_words & title_words) / len(title_words)
+        similarity = difflib.SequenceMatcher(None, query_title, title).ratio()
+        exact_phrase = 0.25 if query_title in title else 0.0
+        game_bonus = 0.1 if item.get("is_game", True) else 0.0
+        return 0.55 * coverage + 0.15 * precision + 0.3 * similarity + exact_phrase + game_bonus
+
+    return [item for _, item in sorted(
+        enumerate(items), key=lambda entry: (-score(entry[1]), entry[0])
+    )]
+
+
+def _parse_product(html: str):
+    soup = BeautifulSoup(html, "lxml")
+    prices = {"nuovo": None, "usato": None, "buyback": None}
+    found_card = False
+    for wrap in soup.select(".gamelife-price-card"):
+        head = wrap.select_one(".gamelife-price-card__header")
+        body = wrap.select_one(".gamelife-price-card__body")
+        if not head or not body:
+            continue
+        label = head.get_text(" ", strip=True).lower()
+        cur = body.select_one(".oe_currency_value")
+        val = parse_price(cur.get_text() if cur else body.get_text(" ", strip=True))
+        if val is None:
+            continue
+        found_card = True
+        if "buyback" in label:
+            prices["buyback"] = val
+        elif "usato" in label:
+            prices["usato"] = val
+        elif "nuovo" in label:
+            prices["nuovo"] = val
+    # Fallback new price from the standard Odoo price element
+    if prices["nuovo"] is None:
+        el = soup.select_one(".product_price .oe_price .oe_currency_value")
+        if el:
+            prices["nuovo"] = parse_price(el.get_text())
+
+    title = None
+    h1 = soup.select_one("#product_detail h1, h1")
+    if h1:
+        title = h1.get_text(" ", strip=True)
+    image = None
+    og = soup.select_one("meta[property='og:image']")
+    if og:
+        image = _thumb(og.get("content"))
+
+    # Console / platform for the results row (from og:title suffix or breadcrumb).
+    platform = None
+    ogt = soup.select_one("meta[property='og:title']")
+    if ogt and ogt.get("content"):
+        m = re.search(r"-\s*([A-Za-z0-9][A-Za-z0-9 /+.-]{0,22}?)\s*\|", ogt["content"])
+        if m:
+            platform = short_platform(m.group(1).strip())
+    if not platform:
+        for c in soup.select(".breadcrumb a, .breadcrumb li"):
+            t = c.get_text(" ", strip=True)
+            if re.search(r"playstation|nintendo|switch|xbox|\bps[0-9]\b|wii|3ds|\bpc\b|steam|gamecube|dreamcast", t, re.I):
+                platform = short_platform(t.strip())
+                break
+
+    return {**prices, "title": title, "image": image, "platform": platform, "_found_card": found_card}
+
+
+async def search_games(query: str, limit: int = 20):
+    q = re.sub(r"\s+", "+", query.strip())
+    url = f"{BASE}/shop?search={q}"
+    items = []
+    for attempt in range(2):
+        ctx = await browser_mod.new_context()
+        try:
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            try:
+                await page.wait_for_selector(".oe_product", timeout=12000)
+            except Exception:  # noqa: BLE001
+                pass
+            html = await page.content()
+        finally:
+            await ctx.close()
+        items = rank_search_results(query, _parse_grid(html))[:limit]
+        if items:
+            return items
+        await asyncio.sleep(0.5)
+    return items
+
+
+async def fetch_product(url: str, attempts: int = 3):
+    """Fetch a single product page with retry. Returns dict with prices/title/image.
+
+    `ok` is True when the price cards were server-rendered on this attempt.
+    """
+    if not url.startswith(BASE):
+        return None
+    last = {"nuovo": None, "usato": None, "buyback": None, "title": None, "image": None, "platform": None}
+    for attempt in range(attempts):
+        ctx = await browser_mod.new_context()
+        try:
+            page = await ctx.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                await page.wait_for_selector(".gamelife-price-card__body .oe_currency_value", timeout=9000)
+            except Exception:  # noqa: BLE001
+                pass
+            data = _parse_product(await page.content())
+        except Exception as e:  # noqa: BLE001
+            logger.warning("fetch_product error (%s) attempt %s: %s", url, attempt, e)
+            data = None
+        finally:
+            await ctx.close()
+
+        if data:
+            last = {k: data.get(k) for k in ("nuovo", "usato", "buyback", "title", "image", "platform")}
+            if data.get("_found_card"):
+                return {**last, "ok": True}
+        await asyncio.sleep(0.6)
+    return {**last, "ok": last.get("nuovo") is not None}

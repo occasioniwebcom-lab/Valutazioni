@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only regression after Expo SDK 57 icon migration (@expo/vector-icons -> @react-native-vector-icons/feather). All screens load and every Feather icon renders correctly (verified DOM shows font-family: 'Feather' with real glyph characters). Login with '1234' lands on Cerca, tab bar icons render (search/clock/file-text with badge), Cronologia icons (clock/plus/check/trash-2/wifi-off) render, Preventivo empty-state icon (file-text) renders, Impostazioni chevron-left + log-out icons render, logout + re-login with '1234' returns user to Cerca deterministically. No console/page errors related to icons; no residual imports of '@expo/vector-icons' or the removed 'use-icon-fonts' hook in the codebase. Only benign warnings observed ('shadow*' deprecation, useNativeDriver on web) — pre-existing and unrelated to migration. NOTE: Backend /api/search returned an empty result set for 'zelda', 'rayman', and 'mario' during this run (200 OK, results=[]) so the results-list, chip-solo-giochi, and add-to-quote path could not be exercised end-to-end during THIS iteration; however the empty-state (inbox icon) path renders correctly and iteration_7 previously confirmed the full flow works. This search-empty behavior is unrelated to the icon migration.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/search?q=zelda|rayman|mario", "issue": "Currently returns 200 with empty results[] during this session. Frontend correctly shows empty-state (inbox icon). Blocked full end-to-end verification of results list + chip + add-to-quote for THIS iteration. Not caused by icon migration; likely GameLife scraper/site change or rate limit. Recommend main agent verify the scraper still parses results from gamelife.it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [
+    "Investigate why /api/search?q=<any> currently returns [] on the running backend (scraper) — not urgent for icon migration sign-off but blocks fresh search UX; iteration_7 confirmed it worked. Suggest re-running scraper manually to confirm gamelife.it selectors still valid.",
+    "Optional: address the pre-existing benign warnings (deprecated 'shadow*' style props on preventivo footer -> migrate to 'boxShadow'; and useNativeDriver: true on web — pass useNativeDriver: false or gate by Platform.OS)."
+  ],
+  "critical_code_review_comments": [
+    "Icon migration is clean: every screen uses `import Feather from '@react-native-vector-icons/feather'` and no file imports from '@expo/vector-icons' or the removed 'use-icon-fonts' module (grep-verified). _layout.tsx correctly relies on the library's automatic font registration and no longer preloads a Feather.ttf via useFonts.",
+    "All interactive elements have testID (login-button, password-input, open-settings, search-input, search-button, chip-solo-giochi, add-to-quote-button, clear-history, remove-item, valutazione-input, share-pdf-button, close-settings, logout-button, etc.).",
+    "Minor: preventivo.tsx uses '...shadow.raised' via StyleSheet which triggers RN Web 'shadow*' deprecation warning — cosmetic only."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped by request)", "frontend": "100% for icon-migration checks; results-list/add-to-quote flow not exercised this run due to empty search results on backend"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Icon migration to @react-native-vector-icons/feather is verified working across login, cerca, cronologia, preventivo, and impostazioni screens. Password remains '1234' (unchanged). If backend search starts returning results again, re-run the full search->add->preventivo edit path to close the last gap. Screenshots saved at /tmp/01_login.png ... /tmp/06_impostazioni.png during testing.",
+  "rca_of_issue": "N/A — no icon-related bug found. The temporary empty-search-results observation is a backend scraper concern, not a frontend/icon regression."
+}
