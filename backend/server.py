@@ -106,6 +106,8 @@ class SearchResponse(BaseModel):
     query: str
     count: int
     results: List[GameRow]
+    gamelife_found: bool = True  # False when GameLife itself returned no results (retry advised)
+    gamelife_enabled: bool = True
 
 
 class ProductResponse(BaseModel):
@@ -209,7 +211,7 @@ async def root():
 async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
     query = q.strip()
     try:
-        items = await scraper.search_all(query, limit=20)
+        items, gamelife_found, gamelife_enabled = await scraper.search_all(query, limit=40)
     except Exception as e:  # noqa: BLE001
         logger.exception("search failed")
         raise HTTPException(status_code=502, detail=f"Ricerca non riuscita: {e}")
@@ -234,7 +236,13 @@ async def search(q: str = Query(..., min_length=1), _cfg=Depends(require_auth)):
             row.priced = True
         results.append(row)
 
-    return SearchResponse(query=query, count=len(results), results=results)
+    return SearchResponse(
+        query=query,
+        count=len(results),
+        results=results,
+        gamelife_found=gamelife_found,
+        gamelife_enabled=gamelife_enabled,
+    )
 
 
 @api_router.get("/product", response_model=ProductResponse)

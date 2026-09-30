@@ -47,9 +47,18 @@ Apri `docker-compose.yml` e modifica **due valori** dentro `environment:`:
   openssl rand -base64 32
   ```
 
-## 3a) Abilita i prezzi eBay automatici
-Registra un'app su [developer.ebay.com](https://developer.ebay.com/), poi crea un
-file `.env` accanto a `docker-compose.yml` con le chiavi **Production**:
+## 3a) Configura le fonti di valutazione
+Crea un file `.env` accanto a `docker-compose.yml`. Inserisci le credenziali qui,
+mai in `docker-compose.yml` o nel codice: il file è locale al server e ignorato da Git.
+
+Per le valutazioni CeX/WeBuy Italia tramite Apify:
+
+```dotenv
+APIFY_API_TOKEN=il-tuo-token-apify
+```
+
+Per gli annunci eBay automatici servono le credenziali **Production** da
+[developer.ebay.com](https://developer.ebay.com/):
 
 ```dotenv
 EBAY_CLIENT_ID=il-tuo-client-id
@@ -57,10 +66,18 @@ EBAY_CLIENT_SECRET=il-tuo-client-secret
 EBAY_MARKETPLACE_ID=EBAY_IT
 ```
 
-Le chiavi restano sul server e non vanno inserite nell'app o caricate su Git. Dopo
-aver salvato `.env`, avvia/ricostruisci il servizio come nel passaggio successivo.
-La ricerca usa automaticamente solo articoli usati a prezzo fisso; se GameLife è
-bloccato, i risultati eBay diventano comunque visibili con prezzo e link all'annuncio.
+Puoi inserirle tutte nello stesso `.env`. Non copiare `backend/.env` nell'immagine:
+Docker esclude i file `.env` dal build e Compose passa i token al container a runtime.
+Il token Apify avvia lo scraper CeX Italia e legge il valore `trade_in_cash`.
+eBay restituisce articoli usati a prezzo fisso, cioè Compralo Subito.
+
+GameLife è escluso dalla ricerca per default (`GAMELIFE_ENABLED=false`) perché
+il server di produzione può essere bloccato dal sito. La ricerca continua con
+CeX ed eBay e la schermata indica che GameLife è disattivato. Riattivalo solo se
+l'accesso torna disponibile e autorizzato, impostando `GAMELIFE_ENABLED=true`
+nel `.env` del VPS. Per contenere l'uso del piano Apify gratuito, CeX viene
+interrogato una sola volta per ogni ricerca, usando il titolo inserito senza
+varianti aggiuntive.
 
 ## 4) Avvia
 Dalla cartella del progetto:
@@ -84,6 +101,43 @@ Inserisci la password (`APP_PASSWORD`) → sei dentro. 🎉
 - La cronologia e i prezzi vengono salvati nel database (volume `mongo_data`), quindi
   restano anche dopo un riavvio.
 - Per **cambiare la password** quando vuoi: nell'app tocca l'icona ⚙️ *Impostazioni*.
+
+## Aggiornare una versione già pubblicata
+La cartella locale contiene la nuova versione. Sul VPS aggiorna i file nella stessa
+directory dove si trova il `docker-compose.yml` pubblicato, senza eliminare il volume
+MongoDB e senza sovrascrivere il `.env` del server.
+
+1. Prima crea un backup del database, dal VPS e dentro la cartella del progetto:
+  ```bash
+  docker compose exec -T mongo mongodump --db gamelife --archive --gzip > backup-gamelife-$(date +%F).archive.gz
+  ```
+2. Dal computer che contiene questa copia del progetto, invia i file aggiornati.
+  Sostituisci `utente` e `IP_VPS` con i tuoi dati:
+  ```bash
+  rsync -av \
+    --exclude='.git/' \
+    --exclude='.env' \
+    --exclude='**/.env' \
+    --exclude='**/.env.*' \
+    --exclude='**/node_modules/' \
+    --exclude='**/.expo/' \
+    --exclude='**/.metro-cache/' \
+    ./ utente@IP_VPS:/opt/valutazioni/
+  ```
+  Se il progetto sul VPS non è in `/opt/valutazioni`, usa la sua directory effettiva.
+  Non aggiungere `--delete`: così non elimini per errore file o configurazioni del server.
+3. Sul VPS verifica che il suo `.env` contenga i token `APIFY_API_TOKEN` e, se
+  configurate, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` ed `EBAY_MARKETPLACE_ID`.
+4. Ricostruisci e ricrea solo l'applicazione:
+  ```bash
+  docker compose up -d --build app
+  docker compose ps
+  docker compose logs --tail=100 app
+  ```
+
+Il comando non rimuove MongoDB né il volume `mongo_data`: cronologia, password e dati
+salvati restano sul server. Dopo il riavvio prova l'accesso e una ricerca prima di
+considerare concluso l'aggiornamento.
 
 ---
 

@@ -6,17 +6,16 @@ negozio per l'usato". NOTE: selectors below are a best-effort based on the publi
 CeX/WeBuy site layout — verify against the live DOM (page.content()) and adjust the
 CSS selectors in `_CARD_SEL` / `_PRICE_SEL` if the site markup has changed since.
 """
+import asyncio
 import logging
 import os
 import re
-import time
 from pathlib import Path
 from urllib.parse import quote
 
 from bs4 import BeautifulSoup
-import requests
+import httpx
 from dotenv import load_dotenv
-from starlette.concurrency import run_in_threadpool
 
 from .gamelife import ACCESSORY_RE
 from . import browser as browser_mod
@@ -122,49 +121,49 @@ def _parse_actor_items(data, limit: int):
     return items[:limit]
 
 
-def _run_apify_actor(query: str, limit: int, token: str):
+async def _run_apify_actor(query: str, limit: int, token: str):
     actor_path = quote(APIFY_ACTOR.replace("/", "~"), safe="~")
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.post(
-        f"{APIFY_BASE}/acts/{actor_path}/runs",
-        params={"waitForFinish": 15},
-        headers=headers,
-        json={
-            "country_code": "it",
-            "search_input": query,
-            "max_items": min(limit, 5),
-            "throttle": 1,
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-    run = response.json().get("data", response.json())
-    run_id = run.get("id")
-    deadline = time.monotonic() + 15
-    while run.get("status") not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
-        if not run_id or time.monotonic() >= deadline:
-            logger.warning("Apify CeX run did not finish within the wait budget")
-            return []
-        time.sleep(1)
-        poll = requests.get(
-            f"{APIFY_BASE}/actor-runs/{quote(run_id, safe='')}",
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(
+            f"{APIFY_BASE}/acts/{actor_path}/runs",
+            params={"waitForFinish": 15},
             headers=headers,
-            timeout=6,
+            json={
+                "country_code": "it",
+                "search_input": query,
+                "max_items": min(limit, 5),
+                "throttle": 1,
+            },
         )
-        poll.raise_for_status()
-        run = poll.json().get("data", poll.json())
-    if run.get("status") != "SUCCEEDED":
-        logger.warning("Apify CeX run ended with status %s", run.get("status"))
-        return []
-    dataset_id = run.get("defaultDatasetId")
-    if not dataset_id:
-        return []
-    dataset = requests.get(
-        f"{APIFY_BASE}/datasets/{quote(dataset_id, safe='')}/items",
-        params={"format": "json", "clean": "true"},
-        headers=headers,
-        timeout=10,
-    )
+        response.raise_for_status()
+        run = response.json().get("data", response.json())
+        run_id = run.get("id")
+        deadline = asyncio.get_event_loop().time() + 15
+        while run.get("status") not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+            if not run_id or asyncio.get_event_loop().time() >= deadline:
+                logger.warning("Apify CeX run did not finish within the wait budget")
+                return []
+            await asyncio.sleep(1)
+            poll = await client.get(
+                f"{APIFY_BASE}/actor-runs/{quote(run_id, safe='')}",
+                headers=headers,
+                timeout=6,
+            )
+            poll.raise_for_status()
+            run = poll.json().get("data", poll.json())
+        if run.get("status") != "SUCCEEDED":
+            logger.warning("Apify CeX run ended with status %s", run.get("status"))
+            return []
+        dataset_id = run.get("defaultDatasetId")
+        if not dataset_id:
+            return []
+        dataset = await client.get(
+            f"{APIFY_BASE}/datasets/{quote(dataset_id, safe='')}/items",
+            params={"format": "json", "clean": "true"},
+            headers=headers,
+            timeout=10,
+        )
     dataset.raise_for_status()
     return _parse_actor_items(dataset.json(), limit)
 
@@ -175,7 +174,7 @@ async def search_buyback(query: str, limit: int = 20):
     apify_token = os.environ.get("APIFY_API_TOKEN")
     if apify_token:
         try:
-            items = await run_in_threadpool(_run_apify_actor, query, limit, apify_token)
+            items = await _run_apify_actor(query, limit, apify_token)
             if items:
                 return items
         except Exception as error:  # noqa: BLE001

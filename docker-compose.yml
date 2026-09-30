@@ -13,6 +13,7 @@ services:
     environment:
       MONGO_URL: "mongodb://mongo:27017"
       DB_NAME: "gamelife"
+      GAMELIFE_ENABLED: ${GAMELIFE_ENABLED:-false}
       # ⚠️ CAMBIA questa password iniziale, poi potrai cambiarla dall'app in "Impostazioni".
       APP_PASSWORD: "valutazioni2026"
       # ⚠️ Metti una stringa lunga e casuale tua (serve a firmare i token di accesso).
@@ -20,6 +21,7 @@ services:
       EBAY_CLIENT_ID: ${EBAY_CLIENT_ID:-}
       EBAY_CLIENT_SECRET: ${EBAY_CLIENT_SECRET:-}
       EBAY_MARKETPLACE_ID: ${EBAY_MARKETPLACE_ID:-EBAY_IT}
+      APIFY_API_TOKEN: ${APIFY_API_TOKEN:-}
     depends_on:
       - mongo
 

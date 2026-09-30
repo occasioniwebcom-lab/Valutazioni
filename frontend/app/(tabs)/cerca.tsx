@@ -33,6 +33,8 @@ export default function CercaScreen() {
   const [errorMsg, setErrorMsg] = useState("");
   const [prices, setPrices] = useState<Record<string, PriceState>>({});
   const [onlyGames, setOnlyGames] = useState(true);
+  const [gamelifeFound, setGamelifeFound] = useState(true);
+  const [gamelifeEnabled, setGamelifeEnabled] = useState(true);
   const tokenRef = useRef(0);
 
   const filtered = useMemo(
@@ -81,10 +83,14 @@ export default function CercaScreen() {
     setErrorMsg("");
     setResults([]);
     setPrices({});
+    setGamelifeFound(true);
+    setGamelifeEnabled(true);
     try {
       const data = await searchGames(q);
       if (token !== tokenRef.current) return;
       setResults(data.results);
+      setGamelifeFound(data.gamelife_found);
+      setGamelifeEnabled(data.gamelife_enabled ?? true);
       setState("done");
       const init: Record<string, PriceState> = {};
       data.results.forEach((r) => {
@@ -198,6 +204,28 @@ export default function CercaScreen() {
         )}
       </View>
 
+      {state === "done" && !gamelifeEnabled && (
+        <View style={styles.gamelifeBanner} testID="gamelife-disabled-banner">
+          <Feather name="info" size={16} color={colors.onSurfaceTertiary} />
+          <Text style={styles.gamelifeBannerText}>
+            GameLife è escluso dalla ricerca. Sono mostrate le offerte disponibili di CeX ed eBay.
+          </Text>
+        </View>
+      )}
+
+      {state === "done" && gamelifeEnabled && !gamelifeFound && (
+        <View style={styles.gamelifeBanner} testID="gamelife-not-found-banner">
+          <Feather name="alert-triangle" size={16} color={colors.warning} />
+          <Text style={styles.gamelifeBannerText}>
+            GameLife: nessun risultato trovato entro 10 secondi. CeX ed eBay restano visibili.
+          </Text>
+          <Pressable onPress={runSearch} testID="retry-gamelife-search" style={styles.gamelifeBannerBtn}>
+            <Feather name="refresh-cw" size={13} color={colors.brandPrimary} />
+            <Text style={styles.gamelifeBannerBtnText}>Riprova ricerca</Text>
+          </Pressable>
+        </View>
+      )}
+
       {state === "loading" && (
         <View testID="loading-list">
           {Array.from({ length: 7 }).map((_, i) => (
@@ -308,6 +336,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipsRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  gamelifeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceTertiary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  gamelifeBannerText: { flex: 1, fontFamily: font.regular, fontSize: fontSize.sm, color: colors.onSurfaceTertiary },
+  gamelifeBannerBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  gamelifeBannerBtnText: { fontFamily: font.semibold, fontSize: fontSize.sm, color: colors.brandPrimary },
   chip: {
     flexDirection: "row",
     alignItems: "center",

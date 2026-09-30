@@ -19,6 +19,52 @@ logger = logging.getLogger("scrapers.gamelife")
 
 BASE = "https://www.gamelife.it"
 
+# GameLife/Odoo tends to challenge (Cloudflare) or rate-limit a *fresh* browser
+# context after the first search succeeds, even from the same IP. Reusing one
+# persistent context keeps the Cloudflare clearance cookies across requests
+# instead of throwing them away every time, and a light stealth patch plus a
+# minimum pacing between navigations keeps the traffic looking less bot-like.
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it'] });
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+window.chrome = window.chrome || { runtime: {} };
+"""
+_MIN_REQUEST_INTERVAL = 1.5
+_context_lock = asyncio.Lock()
+_shared_context = None
+_last_request_at = 0.0
+
+
+async def _get_context():
+    global _shared_context
+    async with _context_lock:
+        if _shared_context is None:
+            ctx = await browser_mod.new_context(viewport={"width": 1366, "height": 768})
+            await ctx.add_init_script(_STEALTH_INIT_SCRIPT)
+            _shared_context = ctx
+        return _shared_context
+
+
+async def _reset_context():
+    global _shared_context
+    async with _context_lock:
+        ctx, _shared_context = _shared_context, None
+    if ctx is not None:
+        try:
+            await ctx.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _throttle():
+    global _last_request_at
+    loop = asyncio.get_event_loop()
+    wait = _MIN_REQUEST_INTERVAL - (loop.time() - _last_request_at)
+    if wait > 0:
+        await asyncio.sleep(wait)
+    _last_request_at = loop.time()
+
 
 def _thumb(url):
     """Downsize Odoo image URLs to a lighter thumbnail."""
@@ -176,7 +222,10 @@ async def search_games(query: str, limit: int = 20):
     url = f"{BASE}/shop?search={q}"
     items = []
     for attempt in range(2):
-        ctx = await browser_mod.new_context()
+        await _throttle()
+        ctx = await _get_context()
+        page = None
+        html = ""
         try:
             page = await ctx.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -185,9 +234,14 @@ async def search_games(query: str, limit: int = 20):
             except Exception:  # noqa: BLE001
                 pass
             html = await page.content()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("search_games error (%s) attempt %s: %s", query, attempt, e)
+            await _reset_context()
         finally:
-            await ctx.close()
-        items = rank_search_results(query, _parse_grid(html))[:limit]
+            if page is not None:
+                await page.close()
+        if html:
+            items = rank_search_results(query, _parse_grid(html))[:limit]
         if items:
             return items
         await asyncio.sleep(0.5)
@@ -203,7 +257,9 @@ async def fetch_product(url: str, attempts: int = 3):
         return None
     last = {"nuovo": None, "usato": None, "buyback": None, "title": None, "image": None, "platform": None}
     for attempt in range(attempts):
-        ctx = await browser_mod.new_context()
+        await _throttle()
+        ctx = await _get_context()
+        page = None
         try:
             page = await ctx.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -215,8 +271,10 @@ async def fetch_product(url: str, attempts: int = 3):
         except Exception as e:  # noqa: BLE001
             logger.warning("fetch_product error (%s) attempt %s: %s", url, attempt, e)
             data = None
+            await _reset_context()
         finally:
-            await ctx.close()
+            if page is not None:
+                await page.close()
 
         if data:
             last = {k: data.get(k) for k in ("nuovo", "usato", "buyback", "title", "image", "platform")}

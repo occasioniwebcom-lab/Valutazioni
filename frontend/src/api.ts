@@ -94,7 +94,13 @@ export async function changePassword(current_password: string, new_password: str
 }
 
 export async function searchGames(q: string) {
-  return req<{ query: string; count: number; results: GameRow[] }>(
+  return req<{
+    query: string;
+    count: number;
+    results: GameRow[];
+    gamelife_found: boolean;
+    gamelife_enabled?: boolean;
+  }>(
     `/search?q=${encodeURIComponent(q)}`,
   );
 }

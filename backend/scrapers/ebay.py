@@ -9,9 +9,8 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
-import requests
+import httpx
 from dotenv import load_dotenv
-from starlette.concurrency import run_in_threadpool
 
 from . import browser as browser_mod
 from .utils import parse_price
@@ -42,20 +41,20 @@ def _credentials():
     return os.environ.get("EBAY_CLIENT_ID"), os.environ.get("EBAY_CLIENT_SECRET")
 
 
-def _fetch_access_token(client_id: str, client_secret: str):
+async def _fetch_access_token(client_id: str, client_secret: str):
     credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-    response = requests.post(
-        f"{API_BASE}/identity/v1/oauth2/token",
-        headers={
-            "Authorization": f"Basic {credentials}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={
-            "grant_type": "client_credentials",
-            "scope": "https://api.ebay.com/oauth/api_scope",
-        },
-        timeout=15,
-    )
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(
+            f"{API_BASE}/identity/v1/oauth2/token",
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={
+                "grant_type": "client_credentials",
+                "scope": "https://api.ebay.com/oauth/api_scope",
+            },
+        )
     response.raise_for_status()
     body = response.json()
     return body["access_token"], int(body.get("expires_in", 7200))
@@ -71,20 +70,29 @@ async def _get_access_token():
     async with _token_lock:
         if _token and time.monotonic() < _token_expires_at:
             return _token
-        _token, expires_in = await run_in_threadpool(_fetch_access_token, client_id, client_secret)
+        _token, expires_in = await _fetch_access_token(client_id, client_secret)
         _token_expires_at = time.monotonic() + max(0, expires_in - 60)
         return _token
+
+
+_USED_GAME_CONDITION_IDS = frozenset({"2750", "4000", "5000", "6000"})
+_ITALIAN_LOCATION = re.compile(r"\b(?:italia|italy)\b", re.I)
 
 
 def _parse_api_results(body: dict, limit: int):
     items = []
     for entry in body.get("itemSummaries", []):
+        location = entry.get("itemLocation") or {}
+        if str(location.get("country", "")).upper() != "IT":
+            continue
         price = entry.get("price") or {}
         if price.get("currency") != "EUR":
             continue
         if "FIXED_PRICE" not in entry.get("buyingOptions", []):
             continue
-        if entry.get("conditionId") != "3000":
+        # The "Giochi" leaf category grades condition as come nuovo/ottime/buone/
+        # accettabili (2750/4000/5000/6000), not the generic "usato" id 3000.
+        if entry.get("conditionId") not in _USED_GAME_CONDITION_IDS:
             continue
         try:
             amount = float(price["value"])
@@ -110,23 +118,29 @@ def _parse_api_results(body: dict, limit: int):
     return sorted(items, key=lambda item: item["price"])[:limit]
 
 
-def _search_api(query: str, token: str, limit: int):
-    response = requests.get(
-        f"{API_BASE}/buy/browse/v1/item_summary/search",
-        params={
-            "q": query,
-            "category_ids": "1249",
-            "filter": "conditionIds:{3000},buyingOptions:{FIXED_PRICE}",
-            "limit": min(max(limit * 3, 50), 100),
-            "sort": "price",
-        },
-        headers={
-            "Authorization": f"Bearer {token}",
-            "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE_ID,
-            "Accept": "application/json",
-        },
-        timeout=20,
-    )
+async def _search_api(query: str, token: str, limit: int):
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            f"{API_BASE}/buy/browse/v1/item_summary/search",
+            params={
+                "q": query,
+                # 139973 = "Giochi" (leaf category), not the broad 1249 parent which
+                # is dominated by merchandise/accessories and starves real matches.
+                "category_ids": "139973",
+                # This category grades used items (2750/4000/5000/6000 = come nuovo/
+                # ottime/buone/accettabili) instead of the generic conditionId 3000,
+                # which barely exists here and was silently filtering out almost
+                # every real used listing.
+                "filter": "conditionIds:{2750|4000|5000|6000},buyingOptions:{FIXED_PRICE},itemLocationCountry:IT",
+                "limit": min(max(limit * 3, 50), 100),
+                "sort": "price",
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE_ID,
+                "Accept": "application/json",
+            },
+        )
     response.raise_for_status()
     return response.json()
 
@@ -143,6 +157,10 @@ def _parse_results(html: str):
         title = title_el.get_text(" ", strip=True)
         if not title or title.lower().startswith("nuova inserzione") or title.lower() == "annuncio":
             continue
+        location_el = card.select_one(".s-item__location")
+        location = location_el.get_text(" ", strip=True) if location_el else ""
+        if not _ITALIAN_LOCATION.search(location):
+            continue
         price_text = price_el.get_text(" ", strip=True)
         # Price ranges ("EUR 10,00 a EUR 20,00") -> take the lower bound.
         price_text = re.split(r"\s+a\s+", price_text, maxsplit=1)[0]
@@ -158,13 +176,13 @@ def _parse_results(html: str):
     return sorted(items, key=lambda item: item["price"])
 
 
-async def search_used_bin(query: str, limit: int = 20):
+async def search_used_bin(query: str, limit: int = 40):
     """Search eBay.it for used items sold as Buy It Now, returning listing prices."""
     client_id, client_secret = _credentials()
     if client_id and client_secret:
         try:
             token = await _get_access_token()
-            body = await run_in_threadpool(_search_api, query, token, limit)
+            body = await _search_api(query, token, limit)
             return _parse_api_results(body, limit)
         except Exception as e:  # noqa: BLE001
             logger.warning("eBay Browse API search failed (%s): %s", query, e)

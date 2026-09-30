@@ -2,7 +2,7 @@
 
 The 502 was transient (backend --reload during file edits). This suite confirms
 several consecutive real queries return HTTP 200 with a JSON body containing a
-`results` list of up to 20 items, each carrying an `is_game` boolean.
+`results` list of up to 40 items, each carrying an `is_game` boolean.
 """
 import os
 import re
@@ -39,7 +39,7 @@ def test_search_status_200_repeated(s, q):
         assert data["query"] == q
         assert isinstance(data["results"], list)
         assert data["count"] == len(data["results"])
-        assert len(data["results"]) <= 20
+        assert len(data["results"]) <= 40
         for row in data["results"]:
             for k in ("url", "title", "priced", "is_game"):
                 assert k in row, f"missing {k} in {row}"

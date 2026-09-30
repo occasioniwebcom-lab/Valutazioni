@@ -7,6 +7,7 @@ are attached eagerly here as source-tagged `offers`.
 """
 import asyncio
 import logging
+import os
 
 from . import cex, ebay, gamelife
 from .match import best_match, matching_candidates
@@ -40,11 +41,18 @@ async def _search_variants(search_fn, queries, limit, source, timeout_seconds=18
     return items[:limit * 2]
 
 
-async def search_all(query: str, limit: int = 20):
+async def search_all(query: str, limit: int = 40):
     query_list = variants(query)
+    gamelife_enabled = os.environ.get("GAMELIFE_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    gamelife_search = (
+        _search_variants(gamelife.search_games, query_list, limit, "gamelife", timeout_seconds=10)
+        if gamelife_enabled else asyncio.sleep(0, result=[])
+    )
     gl_items, cex_items, ebay_items = await asyncio.gather(
-        _search_variants(gamelife.search_games, query_list, limit, "gamelife"),
-        _search_variants(cex.search_buyback, query_list, limit, "cex", timeout_seconds=44),
+        gamelife_search,
+        _search_variants(cex.search_buyback, query_list[:1], limit, "cex", timeout_seconds=44),
         _search_variants(ebay.search_used_bin, query_list[:4], limit, "ebay"),
         return_exceptions=True,
     )
@@ -58,82 +66,73 @@ async def search_all(query: str, limit: int = 20):
         logger.warning("ebay search failed: %s", ebay_items)
         ebay_items = []
 
-    results = []
+    catalog = [{**it, "offers": []} for it in gl_items]
 
-    # GameLife is the preferred catalog, but it must not be a hard dependency:
-    # a Cloudflare challenge there should not erase usable CeX/eBay results.
-    catalog = list(gl_items)
-    if not catalog:
-        seen = set()
-        for source, items in (("ebay", ebay_items), ("cex", cex_items)):
-            for it in items:
-                title = it.get("title") or query.title()
-                key = (title.lower(), it.get("url"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                catalog.append({
-                    "title": title,
-                    "url": it.get("url") or f"https://www.gamelife.it/shop?search={query}",
-                    "image": it.get("image"),
-                    "price": it.get("price"),
-                    "is_game": True,
-                    "offers": [],
-                    "source_only": True,
-                    "primary_source": source,
-                })
-
-    for it in catalog:
-        offers = []
-        for cex_hit in matching_candidates(it["title"], cex_items):
-            offers.append({
-                "source": "cex", "label": f"CeX cash · {cex_hit['title']}",
-                "price": cex_hit["price"], "url": cex_hit["url"],
-            })
-        ebay_hit = best_match(it["title"], ebay_items)
-        if ebay_hit and not any(o["source"] == "ebay" for o in offers):
-            offers.append({
-                "source": "ebay", "label": "eBay usato (Compralo Subito)",
-                "price": ebay_hit["price"], "url": ebay_hit["url"],
-            })
-        if it.get("source_only") and it.get("primary_source") == "ebay":
-            offers = [{
-                "source": "ebay", "label": "eBay usato (Compralo Subito)",
-                "price": it.get("price"), "url": it.get("url"),
-            }]
-        results.append({**it, "offers": offers})
-
-    if not gl_items:
-        matched_ebay_urls = {
-            hit.get("url")
-            for game in gl_items
-            if (hit := best_match(game.get("title", ""), ebay_items)) is not None
-        }
-        existing_urls = {item.get("url") for item in results}
-        for item in ebay_items:
-            if item.get("url") in matched_ebay_urls or item.get("url") in existing_urls:
+    used_cex_urls = set()
+    for row in catalog:
+        for cex_hit in matching_candidates(row["title"], cex_items):
+            url = cex_hit.get("url")
+            if url in used_cex_urls:
                 continue
-            results.append({
-                "title": item.get("title") or query.title(),
-                "url": item["url"],
-                "image": item.get("image"),
-                "price": item.get("price"),
-                "is_game": True,
-                "source_only": True,
-                "primary_source": "ebay",
-                "offers": [{
-                    "source": "ebay",
-                    "label": "eBay usato (Compralo Subito)",
-                    "price": item.get("price"),
-                    "url": item["url"],
-                }],
+            row["offers"].append({
+                "source": "cex", "label": f"CeX cash · {cex_hit['title']}",
+                "price": cex_hit["price"], "url": url,
             })
-            existing_urls.add(item["url"])
+            used_cex_urls.add(url)
+
+    for cex_item in cex_items:
+        url = cex_item.get("url")
+        if not url or url in used_cex_urls:
+            continue
+        used_cex_urls.add(url)
+        catalog.append({
+            "title": cex_item.get("title") or query.title(),
+            "url": url,
+            "image": cex_item.get("image"),
+            "is_game": True,
+            "source_only": True,
+            "primary_source": "cex",
+            "offers": [{
+                "source": "cex", "label": f"CeX cash · {cex_item.get('title', '')}",
+                "price": cex_item.get("price"), "url": url,
+            }],
+        })
+
+    used_ebay_urls = set()
+    for row in catalog:
+        if any(o["source"] == "ebay" for o in row["offers"]):
+            continue
+        ebay_hit = best_match(row["title"], ebay_items)
+        if not ebay_hit or ebay_hit.get("url") in used_ebay_urls:
+            continue
+        row["offers"].append({
+            "source": "ebay", "label": "eBay usato (Compralo Subito)",
+            "price": ebay_hit["price"], "url": ebay_hit["url"],
+        })
+        used_ebay_urls.add(ebay_hit["url"])
+
+    for ebay_item in ebay_items:
+        url = ebay_item.get("url")
+        if not url or url in used_ebay_urls:
+            continue
+        used_ebay_urls.add(url)
+        catalog.append({
+            "title": ebay_item.get("title") or query.title(),
+            "url": url,
+            "image": ebay_item.get("image"),
+            "is_game": True,
+            "source_only": True,
+            "primary_source": "ebay",
+            "offers": [{
+                "source": "ebay", "label": "eBay usato (Compralo Subito)",
+                "price": ebay_item.get("price"), "url": url,
+            }],
+        })
 
     # Keep the user-facing search useful even when all three sites challenge the
     # server. Prices remain empty, never fabricated, and can be retried later.
-    if not results:
-        results.append({
+    if not catalog and gamelife_enabled:
+        catalog.append({
             "title": query.strip().title(),
             "url": f"https://www.gamelife.it/shop?search={query.strip().replace(' ', '+')}",
             "image": None,
@@ -141,13 +140,22 @@ async def search_all(query: str, limit: int = 20):
             "offers": [],
             "source_only": True,
         })
+
     def result_order(item):
-        if not item.get("source_only"):
-            return (0, 0)
-        ebay_prices = [
+        offers = item.get("offers", [])
+        cex_prices = [
             offer["price"] for offer in item.get("offers", [])
+            if offer.get("source") == "cex" and offer.get("price") is not None
+        ]
+        if item.get("primary_source") == "cex" or cex_prices:
+            return (0, min(cex_prices, default=float("inf")))
+        ebay_prices = [
+            offer["price"] for offer in offers
             if offer.get("source") == "ebay" and offer.get("price") is not None
         ]
-        return (1, min(ebay_prices, default=float("inf")))
+        if item.get("primary_source") == "ebay" or ebay_prices:
+            return (1, min(ebay_prices, default=float("inf")))
+        return (2, 0)
 
-    return sorted(results, key=result_order)
+    gamelife_found = bool(gl_items)
+    return sorted(catalog, key=result_order)[:limit], gamelife_found, gamelife_enabled
